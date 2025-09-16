@@ -1,0 +1,2304 @@
+{
+  "name": "My workflow 2",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "admin-agent",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "5130d214-fdc1-46ae-a144-6df757253946",
+      "name": "Webhook (Admin In)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -1376,
+        1296
+      ],
+      "webhookId": "47664199-4a4a-4c57-bf57-e9eef0388925",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "DfFb1gPyOe4QmLAB",
+          "name": "Header Auth account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const msg = $input.first().json.body.mensagem || $json.query || '';\nif (!msg || typeof msg !== 'string') {\n  return [{ error: 'Mensagem ausente. Envie {\"mensagem\":\"...\"}.' }];\n}\nreturn [{ mensagem: msg.trim().slice(0, 2000) }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1152,
+        1296
+      ],
+      "id": "292f1a74-c989-49be-995e-d84a2d77e1b9",
+      "name": "Prep Context (vars)1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const s = $input.first().json.output || '';\ntry {\n  const obj = JSON.parse(s);\n  return [obj];\n} catch (e) {\n  return [{ error: 'Modelo não retornou JSON válido.', raw: s }];\n}\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -576,
+        1296
+      ],
+      "id": "48d3d1d6-be29-4873-8b3d-c9843c6cd93e",
+      "name": "JSON.parse"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Espera receber algo como { params: { nome, limit } } no body\nconst raw  = ($json && typeof $json === 'object') ? $json : {};\nconst body = (raw.body && typeof raw.body === 'object') ? raw.body : raw;\n\nconst p = body.params || {};\n\nconst nome  = typeof p.nome === 'string' ? p.nome.trim() : '';\nlet   limit = Number.isFinite(Number(p.limit)) ? Number(p.limit) : 25;\nlimit = Math.min(Math.max(limit, 1), 100);\n\nif (!nome) {\n  // Retorna item marcando falha controlada\n  return [{\n    json: {\n      ok: false,\n      status: 400,\n      error: 'Nome obrigatório.',\n      details: { field: 'nome' }\n    }\n  }];\n}\n\nreturn [{\n  json: {\n    ok: true,\n    params: { nome, limit }\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -128,
+        144
+      ],
+      "id": "7fecd71f-ad2c-4526-b8ec-0ad897403887",
+      "name": "Validate Nome"
+    },
+    {
+      "parameters": {
+        "model": "deepseek/deepseek-r1-0528-qwen3-8b:free",
+        "options": {
+          "temperature": 0.1
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        -864,
+        1520
+      ],
+      "id": "4b6d710e-e0f1-4663-8364-300d783c7e8e",
+      "name": "OpenRouter Chat Model",
+      "credentials": {
+        "openRouterApi": {
+          "id": "q7sUCdplO1k3MZbR",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "set",
+        "key": "cohort:default:admin",
+        "value": "={{$json.cohort_hash}}",
+        "keyType": "hash",
+        "expire": true,
+        "ttl": 1800
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        768,
+        336
+      ],
+      "id": "194f5e6c-2629-46ab-b232-68e617c5240a",
+      "name": "Redis",
+      "alwaysOutputData": true,
+      "credentials": {
+        "redis": {
+          "id": "C9grVaTz9dMMkwZs",
+          "name": "Redis account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ======================= CONFIG =======================\nconst SOURCE_EMAIL = 'Supabase RPC search_lead_by_email';\nconst SOURCE_NOME  = 'Supabase RPC search_by_name';\n\n// ======================= HELPERS ======================\nfunction trunc(s, n = 80) {\n  s = (s ?? '') + '';\n  return s.length > n ? s.slice(0, n - 1) + '…' : s;\n}\n\nfunction looksLikeLead(o) {\n  return o && typeof o === 'object' && (\n    o.id != null || o.lead_id != null || o.full_name != null || o.email != null\n  );\n}\n\n// Devolve {rows, error, unexecuted}\nfunction takeOutcomeFrom(nodeName) {\n  try {\n    const its = $items(nodeName); // lança se não executou\n    if (!Array.isArray(its) || its.length === 0) {\n      return { rows: [], error: null, unexecuted: false };\n    }\n    // Split Off + json = array\n    if (Array.isArray(its[0].json)) {\n      return { rows: its[0].json, error: null, unexecuted: false };\n    }\n    // Split On → cada item é uma linha\n    const arr = its.map(i => i.json);\n    const first = its[0]?.json ?? {};\n    const errText = first.error || first.message || null;\n    return { rows: arr, error: errText, unexecuted: false };\n  } catch (e) {\n    const msg = String(e?.message || e);\n    const isUnexecuted = /Referenced node is unexecuted/i.test(msg);\n    return { rows: [], error: isUnexecuted ? null : msg, unexecuted: isUnexecuted };\n  }\n}\n\n// Normaliza e descarta linhas vazias\nfunction normalizeRow(r) {\n  if (!r || typeof r !== 'object') return null;\n  const norm = {\n    id:        r.id ?? r.lead_id ?? r.bubble_id ?? null,\n    lead_id:   r.lead_id ?? null,\n    full_name: typeof r.full_name === 'string' ? r.full_name.trim() : (r.full_name ?? null),\n    email:     typeof r.email === 'string' ? r.email.trim() : (r.email ?? null),\n    owner:     r.owner ?? null,\n    country_iso2: r.country_iso2 ?? null,\n    source:    r.source ?? null,\n    notes:     r.notes ?? null,\n    created_at:r.created_at ?? null,\n  };\n  const meaningful = norm.id || norm.lead_id || norm.full_name || norm.email;\n  return meaningful ? norm : null;\n}\n\n// =================== ENTRADA (para meta) ===================\nconst allIn   = $input.all().map(i => i.json);\nconst firstIn = allIn[0] || {};\nconst nome    = firstIn?.params?.nome  ?? firstIn?.payload?.nome  ?? null;\nconst email   = firstIn?.params?.email ?? firstIn?.payload?.email ?? null;\n\n// ================== COLETA / SELEÇÃO RPC ==================\nconst outEmail = takeOutcomeFrom(SOURCE_EMAIL);\nconst outNome  = takeOutcomeFrom(SOURCE_NOME);\n\nlet pickedNode = null;\nlet rows = [];\nlet rpcError = null;\n\nif ((outEmail.rows?.length || 0) > 0) {\n  pickedNode = SOURCE_EMAIL;\n  rows = outEmail.rows;\n} else if ((outNome.rows?.length || 0) > 0) {\n  pickedNode = SOURCE_NOME;\n  rows = outNome.rows;\n} else {\n  rpcError = outEmail.error || outNome.error || null;\n  rows = [];\n}\n\n// Fallback do input **somente** se tiver cara de lead\nif (rows.length === 0) {\n  if (Array.isArray(firstIn) && firstIn.some(looksLikeLead)) rows = firstIn;\n  else if (Array.isArray(firstIn.items) && firstIn.items.some(looksLikeLead)) rows = firstIn.items;\n}\n\n// ==================== INTENT ======================\nlet intent = 'buscar_pessoa_por_nome';\nif (pickedNode === SOURCE_EMAIL || (!!email && !nome)) {\n  intent = 'buscar_pessoa_por_email';\n}\n\n// ==================== SANEAMENTO ==================\n// Normaliza e remove linhas \"vazias\" (ex.: {})\nrows = (rows || []).map(normalizeRow).filter(Boolean);\n\n// ====================== PREVIEW ===================\nconst preview = rows.slice(0, 25).map((r, i) => ({\n  idx: i + 1,\n  id: r.id,\n  lead_id: r.lead_id,\n  full_name: r.full_name,\n  email: r.email,\n  owner: r.owner,\n  country_iso2: r.country_iso2,\n  source: r.source,\n  notes: r.notes ? trunc(r.notes, 80) : null,\n  created_at: r.created_at,\n}));\n\n// ==================== COORTE (se veio) ============\nlet cohort = {};\ntry {\n  const raw = firstIn.cohort_hash;\n  if (raw) cohort = typeof raw === 'string' ? JSON.parse(raw) : raw;\n} catch { /* ignore */ }\n\n// ================== STATUS & MENSAGEM =============\nconst noResults = rows.length === 0;\nconst status = noResults ? (rpcError ? 500 : 404) : 200;\n\nconst message = noResults\n  ? `🔎 ${intent}\\n${rpcError ? 'Erro no RPC.' : 'Nenhum resultado.'} Coorte salva (pode estar vazia).`\n  : `🔎 ${intent}\\nResultados: *${rows.length}*.\\nCoorte salva.`;\n\n// (Opcional) Texto pronto para o Webhook em modo Text\nlet response_text = message;\nif (!noResults) {\n  const list = preview\n    .map(l => `- ${l.full_name || '(sem nome)'} (${l.email || 'sem email'}${l.lead_id ? ' — ' + l.lead_id : ''})`)\n    .join('\\n');\n  response_text += `\\n\\nLeads:\\n${list}`;\n}\n\n// ===================== RETORNO FINAL ===============\nreturn [{\n  json: {\n    ok: status === 200,\n    status,\n    intent,\n    query: { nome, email },\n    total: rows.length,\n    items: rows,\n    preview,\n    message,\n    response_text, // para usar direto no Respond to Webhook (Text)\n    error: noResults ? (rpcError ? 'Falha na consulta ao RPC.' : 'Nenhum lead encontrado para a consulta.') : null,\n    cause: rpcError || null,\n    cohort: {\n      key:  cohort?.key ?? cohort?.name ?? null,\n      ids:  cohort?.ids ?? [],\n      meta: cohort?.meta ?? null,\n    },\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        992,
+        336
+      ],
+      "id": "502ea671-9dfa-426b-b3ad-3bb62203a441",
+      "name": "Respond (List & Save Cohort)"
+    },
+    {
+      "parameters": {
+        "dataType": "string",
+        "value1": "={{ $json.intent }}",
+        "rules": {
+          "rules": [
+            {
+              "value2": "ver_coorte"
+            },
+            {
+              "value2": "buscar_pessoa_por_nome"
+            },
+            {
+              "value2": "buscar_pessoa_por_email"
+            },
+            {
+              "value2": "contar_por_periodo"
+            },
+            {
+              "value2": "contar_por_pais"
+            },
+            {
+              "value2": "contar_por_origem"
+            },
+            {
+              "value2": "consulta_semantica_notas"
+            },
+            {
+              "value2": "limpar_coorte"
+            },
+            {
+              "value2": "preparar_atualizacao_owner"
+            },
+            {
+              "value2": "confirmar_atualizacao_owner"
+            },
+            {
+              "value2": "cancelar_update"
+            }
+          ]
+        }
+      },
+      "id": "cbb816e1-7c32-43e5-ba7e-3dd18d9d2aa3",
+      "name": "Switch (intent)",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 2,
+      "position": [
+        -352,
+        1152
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const hash = $json.propertyName ?? {};\nconst items = Object.values(hash)\n  .map(v => {\n    if (typeof v === 'string') {\n      try { return JSON.parse(v); } catch { return null; }\n    }\n    return (v && typeof v === 'object') ? v : null;\n  })\n  .filter(Boolean);\n\nreturn {\n  message: `Coorte atual: ${items.length} lead(s).`,\n  preview_ids: items.flatMap(x => x.ids ?? []),\n  saved_at: items.at(-1)?.meta?.saved_at ?? null,\n  cursor:    items.at(-1)?.meta?.cursor    ?? null,\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        96,
+        432
+      ],
+      "id": "563f98a7-bea4-44ef-8bd5-9a7d357896f8",
+      "name": "Respond (View Cohort)"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "key": "cohort:default:admin",
+        "keyType": "hash",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -128,
+        432
+      ],
+      "id": "2b21f2f6-c63c-4fd8-9e43-06a43111468a",
+      "name": "Redis1",
+      "credentials": {
+        "redis": {
+          "id": "C9grVaTz9dMMkwZs",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const leadId = $json.lead_id ?? $json.cohort?.ids?.[0];\nif (!leadId) throw new Error(\"lead_id não encontrado.\");\n\nconst cohort = $json.cohort ?? {\n  ids: [leadId],\n  meta: {\n    count: 1,\n    saved_at: new Date().toISOString(),\n    cursor: new Date().toISOString(),\n  },\n};\n\n// IMPORTANTE: stringify por campo\nreturn {\n  cohort_hash: {\n    [leadId]: JSON.stringify(cohort),\n  },\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        544,
+        336
+      ],
+      "id": "fdc10229-2325-429a-9961-41934e1491d1",
+      "name": "Build Cohort",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = (items?.[0]?.json) ?? {};\n\n// --- helpers ---\nconst get = (obj, path) => path.reduce((a, k) => (a && a[k] !== undefined ? a[k] : undefined), obj);\nconst emailRe = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/i;\nconst extractEmail = (s) => {\n  if (typeof s !== 'string') return null;\n  const m = s.match(emailRe);\n  return m ? m[0].toLowerCase() : null;\n};\n\n// 1) caminhos mais prováveis (inclui params.novo_owner)\nconst paths = [\n  ['ownerTarget'], ['owner_target'], ['owner'], ['action_owner'],\n  ['params','owner'], ['params','novo_owner'], ['params','owner_email'],\n  ['params','ownerTarget'], ['params','owner_target'],\n];\n\nlet candidate = null;\nfor (const p of paths) {\n  const v = get(input, p);\n  if (typeof v === 'string' && v.trim()) { candidate = v.trim(); break; }\n}\n\nlet email = extractEmail(candidate);\n\n// 2) fallback: vasculha todo o objeto e pega o primeiro e-mail,\n// priorizando chaves que contenham \"owner|novo|target\"\nif (!email) {\n  const stack = [input];\n  while (stack.length && !email) {\n    const obj = stack.pop();\n    if (obj && typeof obj === 'object') {\n      for (const [k, v] of Object.entries(obj)) {\n        if (typeof v === 'string') {\n          const found = extractEmail(v);\n          if (found) {\n            if (/owner|novo|target/i.test(k)) { email = found; break; }\n            if (!email) email = found; // fallback\n          }\n        } else if (v && typeof v === 'object') {\n          stack.push(v);\n        }\n      }\n    }\n  }\n}\n\nconst ok = !!email;\nreturn [{ json: { ok, ownerTarget: email || null } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -128,
+        1968
+      ],
+      "id": "8c05393f-733b-4c1c-a1a9-9fc9eec71f4f",
+      "name": "Validate Owner"
+    },
+    {
+      "parameters": {
+        "jsCode": "// === Prep Update Summary — compatível com novo formato do Redis ===\n// Entrada esperada: Merge (append) de [ Redis GET(c(o)hort), Validate Owner ]\n\nconst all = (items || []).map(it => it.json ?? {});\n\nfunction parseMaybeJSON(v) {\n  if (v == null) return null;\n  if (typeof v === 'string') { try { return JSON.parse(v); } catch { return null; } }\n  if (typeof v === 'object') return v;\n  return null;\n}\n\nconst idSet = new Set();\nlet savedAtLatest = null;\nlet cursorLatest = null;\n\nfunction considerMeta(meta) {\n  if (!meta || typeof meta !== 'object') return;\n  const s = meta.saved_at;\n  if (s) {\n    const d = new Date(s);\n    if (!isNaN(d)) {\n      const cur = savedAtLatest ? new Date(savedAtLatest) : null;\n      if (!cur || d > cur) savedAtLatest = d.toISOString();\n    }\n  }\n  if (meta.cursor) cursorLatest = meta.cursor;\n}\n\n// --- Varre todos os itens vindos do Merge ---\nfor (const j of all) {\n  // 1) Novo formato: propertyName é um objeto { lead_xxx: \"<json string>\" }\n  if (j.propertyName && typeof j.propertyName === 'object' && !Array.isArray(j.propertyName)) {\n    for (const k of Object.keys(j.propertyName)) {\n      const parsed = parseMaybeJSON(j.propertyName[k]);\n      if (parsed && Array.isArray(parsed.ids)) {\n        parsed.ids.forEach(id => idSet.add(id));\n        considerMeta(parsed.meta);\n      }\n    }\n  }\n\n  // 2) Formatos antigos: value ou propertyName.value contendo JSON stringificado\n  const rawA = j?.value ?? j?.propertyName?.value ?? null;\n  const parsedA = parseMaybeJSON(rawA);\n  if (parsedA && Array.isArray(parsedA.ids)) {\n    parsedA.ids.forEach(id => idSet.add(id));\n    considerMeta(parsedA.meta);\n  }\n\n  // 3) Já veio direto como { ids, meta }\n  if (Array.isArray(j.ids)) {\n    j.ids.forEach(id => idSet.add(id));\n    considerMeta(j.meta);\n  }\n}\n\nconst ids = [...idSet];\nconst meta = { saved_at: savedAtLatest ?? null, cursor: cursorLatest ?? null };\nconst count = ids.length;\n\n// --- Descobrir ownerTarget a partir do outro item do Merge (Validate Owner) ---\nlet ownerTarget = null;\nfor (const j of all) {\n  const cand =\n    j.ownerTarget ?? j.owner_target ??\n    j.params?.novo_owner ?? j.params?.owner ?? j.params?.owner_email ?? null;\n  if (typeof cand === 'string' && cand.trim()) { ownerTarget = cand.trim().toLowerCase(); break; }\n}\n\n// --- Monta saída ---\nconst pending = {\n  action: 'update_owner',\n  owner_target: ownerTarget ?? null,\n  ids,\n  stats: {\n    count,\n    saved_at: meta.saved_at,\n    cursor: meta.cursor,\n  },\n};\n\nconst ok = count > 0;\n\nreturn [{\n  json: {\n    ok,\n    error_code: ok ? null : 'COORTE_VAZIA',\n    message: ok\n      ? 'Itens prontos para atualização de owner.'\n      : 'A coorte atual não tem itens. Faça uma busca primeiro.',\n    preview: {\n      count,\n      saved_at: meta.saved_at,\n      cursor: meta.cursor,\n    },\n    pending,\n    owner_label: ownerTarget || 'não definido',\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        1584
+      ],
+      "id": "a5a23702-dbb0-4b01-8fb3-2e6af48bf122",
+      "name": "Prep Update Summary"
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $json.pending;\n\nreturn [{\n  message:\n    `Resumo da atualização:\\n` +\n    `• Owner alvo: ${p.owner_target}\\n` +\n    `• Quantidade: ${p.stats.count}\\n` +\n    (p.stats.saved_at ? `• Coorte salva em: ${p.stats.saved_at}\\n` : '') +\n    `\\nDigite **confirmar** para aplicar ou **cancelar** para descartar.`,\n  preview_ids: p.ids.slice(0, 25),\n  instructions: 'Use: confirmar | cancelar'\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        992,
+        1488
+      ],
+      "id": "96afb5b4-33ff-4558-b271-ac7294bcd5a8",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Lê o que veio do Redis GET (Key Type = String, Name = \"pending\")\nconst rawInput =\n  $json?.pending ??                // quando Name = \"pending\"\n  $json?.propertyName ??           // fallback se usou outro Name\n  $json ??                         // fallback extremo\n  null;\n\n// Tenta parsear caso seja string JSON (com \\\")\nlet pending = null;\ntry {\n  pending = (typeof rawInput === 'string') ? JSON.parse(rawInput) : rawInput;\n} catch (_) {\n  // fallback para casos duplamente-encapsulados (raro)\n  try {\n    const once = String(rawInput).replace(/^\"(.*)\"$/s, '$1');\n    pending = JSON.parse(once);\n  } catch {}\n}\n\n// Validação básica\nconst ids = Array.isArray(pending?.ids) ? pending.ids : [];\nconst ok = !!pending && ids.length > 0;\n\nreturn [{\n  json: {\n    ok,\n    error_code: ok ? null : 'PENDING_EMPTY_OR_INVALID',\n    message: ok ? 'Pending carregado.' : 'Nenhuma ação pendente para confirmar/cancelar.',\n    pending: pending || null,\n    ids,\n    owner_target: pending?.owner_target ?? null,\n    count: ids.length,\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        96,
+        2352
+      ],
+      "id": "ed58115f-6e04-4591-9762-660a51ee4a09",
+      "name": "Guard Pending"
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "key": "pending:default:admin"
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        320,
+        2640
+      ],
+      "id": "197396d1-9118-4a21-8349-0946e95734f2",
+      "name": "Redis4",
+      "credentials": {
+        "redis": {
+          "id": "C9grVaTz9dMMkwZs",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "propertyName": "pending",
+        "key": "pending:default:admin",
+        "keyType": "string",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -128,
+        2352
+      ],
+      "id": "f1fe3c2e-390c-4066-9b9e-60291e47f374",
+      "name": "Redis GET (pending_action)",
+      "credentials": {
+        "redis": {
+          "id": "C9grVaTz9dMMkwZs",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Lê o que veio do Redis GET (Key Type = String, Name = \"pending\")\nconst rawInput =\n  $json?.pending ??                // quando Name = \"pending\"\n  $json?.propertyName ??           // fallback se usou outro Name\n  $json ??                         // fallback extremo\n  null;\n\n// Tenta parsear caso seja string JSON (com \\\")\nlet pending = null;\ntry {\n  pending = (typeof rawInput === 'string') ? JSON.parse(rawInput) : rawInput;\n} catch (_) {\n  // fallback para casos duplamente-encapsulados (raro)\n  try {\n    const once = String(rawInput).replace(/^\"(.*)\"$/s, '$1');\n    pending = JSON.parse(once);\n  } catch {}\n}\n\n// Validação básica\nconst ids = Array.isArray(pending?.ids) ? pending.ids : [];\nconst ok = !!pending && ids.length > 0;\n\nreturn [{\n  json: {\n    ok,\n    error_code: ok ? null : 'PENDING_EMPTY_OR_INVALID',\n    message: ok ? 'Pending carregado.' : 'Nenhuma ação pendente para confirmar/cancelar.',\n    pending: pending || null,\n    ids,\n    owner_target: pending?.owner_target ?? null,\n    count: ids.length,\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        96,
+        2640
+      ],
+      "id": "d7c24fff-1253-4c07-99ca-ef4081753da0",
+      "name": "Guard Pending1"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "propertyName": "pending",
+        "key": "pending:default:admin",
+        "keyType": "string",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -128,
+        2640
+      ],
+      "id": "167f991b-cffc-41ce-8c64-636569c0e557",
+      "name": "Redis GET (pending_action)1",
+      "credentials": {
+        "redis": {
+          "id": "C9grVaTz9dMMkwZs",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const owner = $json.owner_target ?? '(desconhecido)';\nconst n = ($json.ids || []).length || 0;\nreturn [{\n  message: `✅ Cancelado. Nada foi alterado. (owner proposto: ${owner}, ${n} lead(s) na ação pendente)`,\n  canceled: true,\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        544,
+        2640
+      ],
+      "id": "52bdf9f6-c89e-4f92-902b-7bbedd9b9afc",
+      "name": "Respond (Cancelado)"
+    },
+    {
+      "parameters": {
+        "operation": "set",
+        "key": "pending:default:admin",
+        "value": "={{ JSON.stringify($json.pending) }}",
+        "keyType": "string",
+        "expire": true,
+        "ttl": 600
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        768,
+        1488
+      ],
+      "id": "1a49948a-28e0-48f1-8fea-d4487dd25287",
+      "name": "Redis SET (pending_action)",
+      "credentials": {
+        "redis": {
+          "id": "C9grVaTz9dMMkwZs",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.mensagem }}",
+        "options": {
+          "systemMessage": "Você é um Agente Admin ESTRITO. Responda SOMENTE no formato JSON exigido (nada de texto fora do JSON).\nMapeie a mensagem do usuário para UMA das intents válidas abaixo.\nSe faltar parâmetro obrigatório, ainda assim produza a intent correta e só inclua em \"params\" o que for dedutível do enunciado.\nNUNCA invente valores. Não use markdown, não use crases.\nResponda sempre com exatamente um objeto JSON no formato:\n{\"intent\":\"<string>\",\"params\":{...}}\n\nRegras gerais:\n- Remova espaços extras e normaliza acentos quando necessário (mas não altere a grafia de nomes próprios).\n- Converta e-mails para minúsculas e aparadas (trim).\n- \"limit\": se não mencionado, defina 25. Mín 1, máx 100 (se usuário pedir acima, fixe em 100).\n- \"cursor\": texto opaco (não invente).\n- Datas: aceite formatos naturais (ex.: \"ontem\", \"mês passado\", \"2024-07-12 a 2024-09-10\") e converta para ISO YYYY-MM-DD apenas se estiver explícito; caso contrário, OMITA (não invente).\n- Arrays de filtros (paises, origens): aceite frases tipo \"Brasil e Argentina\" e transforme em array [\"Brasil\",\"Argentina\"].\n\nINTENTS VÁLIDAS E SEUS PARÂMETROS:\n\n1) buscar_pessoa_por_nome { nome, limit?, cursor? }\n   - \"nome\": texto como fornecido pelo usuário (aparado).\n   - \"limit\": inteiro (1..100). Default: 25 se não vier.\n   - \"cursor\": string opcional.\n\n2) buscar_pessoa_por_email { email, limit? }\n   - \"email\": obrigatória, validada grosseiramente como contendo \"@\", minúscula e aparada.\n   - \"limit\": inteiro (1..100). Default: 25 se não vier.\n\n3) contar_por_periodo { data_inicial, data_final }\n   - Se usuário não der datas específicas, NÃO invente (omita). Só preencha se ele disser explicitamente.\n\n4) contar_por_pais { paises? }\n   - \"paises\": array de strings (ex.: [\"Brasil\",\"Argentina\"]). Se não deu, omita.\n\n5) contar_por_origem { origens? }\n   - \"origens\": array de strings (ex.: [\"facebook\",\"google\"]). Se não deu, omita.\n\n6) consulta_semantica_notas { termo, limit?, cursor? }\n   - \"termo\": obrigatório, string.\n   - \"limit\": inteiro (1..100), default 25.\n   - \"cursor\": string opcional.\n\n7) ver_coorte { }\n\n8) limpar_coorte { }\n\n9) preparar_atualizacao_owner { novo_owner }\n   - \"novo_owner\": e-mail OU identificador de owner como usuário disser (aparado). Não invente.\n\n10) confirmar_atualizacao_owner { }\n\n11) cancelar_update { }\n\nFormato de resposta (exemplos):\n{\"intent\":\"buscar_pessoa_por_nome\",\"params\":{\"nome\":\"maria\",\"limit\":25}}\n{\"intent\":\"ver_coorte\",\"params\":{}}\n{\"intent\":\"preparar_atualizacao_owner\",\"params\":{\"novo_owner\":\"owner_us@company.com\"}}\n\nNUNCA retorne arrays no topo, NUNCA crie campos além de \"intent\" e \"params\".\n"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        -928,
+        1296
+      ],
+      "id": "171d53e7-985a-4b82-9cc9-aaf023ad0bf2",
+      "name": "AI Agent (orquestrador)"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a2b0619e-d759-474a-87c6-dd39fba09cea",
+              "leftValue": "={{$json.ok}}\n",
+              "rightValue": "true",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "0f5d0bd1-8efc-4676-9f6d-c46c27028edb",
+              "leftValue": "={{ !!$json.pending?.owner_target }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        544,
+        1584
+      ],
+      "id": "7396cbc3-a197-45a3-9a90-f1f98ff07848",
+      "name": "IF (Has pending?)"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    ok: false,\n    reason: $json.error_code ?? 'SEM_COORTE',\n    message: $json.message ?? 'A coorte atual não tem itens. Faça uma busca primeiro.',\n    preview: $json.preview ?? null\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        768,
+        1968
+      ],
+      "id": "602fb5e9-b9e5-48b0-a00b-db33ff2f7c3c",
+      "name": "Respond (Cancelado)1"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "key": "cohort:default:admin",
+        "keyType": "hash",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -128,
+        1584
+      ],
+      "id": "a8aa6d62-f228-4d4c-9a71-1e7a4daf435f",
+      "name": "Redis GET (cohort:default:admin)",
+      "credentials": {
+        "redis": {
+          "id": "C9grVaTz9dMMkwZs",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        96,
+        1584
+      ],
+      "id": "52d26ea6-3712-4cee-a3e5-d12497403e34",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "74c40993-5c91-444b-9c37-bc59a083ed77",
+              "leftValue": "={{$json.ok}}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        320,
+        2352
+      ],
+      "id": "61ca1eb7-afa2-41d6-a533-ad5641a3af21",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    ok: false,\n    error_code: 'PENDING_NOT_FOUND',\n    message: 'Não há ação pendente para confirmar/cancelar.',\n    instructions: 'Envie: preparar atualização_owner <email> | status | cancelar',\n    preview: { count: 0, saved_at: null, cursor: null }\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        544,
+        2448
+      ],
+      "id": "8a2a2d0b-2337-410b-b050-dd5c7c9d772a",
+      "name": "Reply: no pending"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ids = Array.isArray($json.ids) ? $json.ids : [];\nconst owner = $json.owner_target ?? null;\n\n// gera 1 item por id, carregando também o owner_target\nreturn ids.map(id => ({ json: { id, owner_target: owner } }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        544,
+        2256
+      ],
+      "id": "200a2a34-6d72-4714-a396-0156f983c5de",
+      "name": "Explode IDs"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "typeName": "lead_v",
+        "returnAll": true,
+        "options": {
+          "filters": {
+            "filter": [
+              {
+                "key": "lead_id",
+                "constraint_type": "equals",
+                "value": "={{$json.id}}"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.bubble",
+      "typeVersion": 1,
+      "position": [
+        768,
+        2256
+      ],
+      "id": "746618eb-c837-4a24-b5cd-60fb0d91f02e",
+      "name": "Bubble: Search by lead_id",
+      "alwaysOutputData": false,
+      "credentials": {
+        "bubbleApi": {
+          "id": "0pP0za0tpZEhcLtj",
+          "name": "Bubble account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "f20796e3-9b70-447e-907a-7e6a10334725",
+              "leftValue": "={{ !!(\n  $json._id ||                                // quando vem 1 objeto\n  ($json.results?.length ?? 0) > 0 ||         // quando vem { results: [...] }\n  ($json.response?.results?.length ?? 0) > 0  // quando vem { response: { results: [...] } }\n) }}\n",
+              "rightValue": 0,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        992,
+        2256
+      ],
+      "id": "79dd93a6-c0f1-492f-8c14-dd67c3270fb5",
+      "name": "Found?"
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "key": "pending:default:admin"
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        2112,
+        1968
+      ],
+      "id": "f6313f47-6245-4bb6-b849-a8017b5125e8",
+      "name": "Redis2",
+      "credentials": {
+        "redis": {
+          "id": "C9grVaTz9dMMkwZs",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "typeName": "lead_v",
+        "objectId": "={{ $json.bubble_id }}",
+        "properties": {
+          "property": [
+            {
+              "key": "owner",
+              "value": "={{ $json.owner_target }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.bubble",
+      "typeVersion": 1,
+      "position": [
+        1664,
+        2160
+      ],
+      "id": "472c4bd6-c661-4def-b968-7fb3e3bc8a57",
+      "name": "Bubble: Update a thing",
+      "credentials": {
+        "bubbleApi": {
+          "id": "0pP0za0tpZEhcLtj",
+          "name": "Bubble account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "batchSize": 2,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1440,
+        2160
+      ],
+      "id": "4379d66d-7a8e-4b35-bd87-517a0d6337be",
+      "name": "Loop Over Items1"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    ok: false,\n    reason: 'BUBBLE_NOT_FOUND',\n    id: $json.id ?? null,\n    message: `ID ${$json.id ?? '(sem id)'} não localizado no Bubble. Pulando atualização no Bubble.`\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1216,
+        2352
+      ],
+      "id": "6218f4c1-64a7-48f5-8596-0f6d606fb7a1",
+      "name": "Bubble not found"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Itens atuais (provavelmente do \"Bubble: Search by lead_id\")\nconst bubbleItems = $input.all();\n\n// Pega o owner_target uma única vez da mensagem (node \"Explode IDs\")\nconst idsItems = $items('Explode IDs');\nconst OWNER_TARGET =\n  idsItems?.[0]?.json?.owner_target ??\n  $json.owner_target ??  // fallback se vier direto no input\n  null;\n\nreturn bubbleItems.map(({ json }, i) => {\n  // bubble_id vindo do resultado do Bubble (ajuste conforme seu payload)\n  const bubble_id =\n    json._id ??\n    json.results?.[0]?._id ??\n    json.response?.results?.[0]?._id ??\n    json.bubble_id ??\n    null;\n\n  // id correspondente (alinha pela posição com \"Explode IDs\")\n  const id =\n    idsItems?.[i]?.json?.id ??\n    idsItems?.[i]?.json?.lead_id ??\n    json.id ??\n    json.lead_id ??\n    null;\n\n  if (!bubble_id) {\n    return { json: { ok: false, reason: 'BUBBLE_NOT_FOUND', id, owner_target: OWNER_TARGET } };\n  }\n\n  return {\n    json: {\n      ok: true,\n      id,\n      owner_target: OWNER_TARGET, // <— sempre o mesmo da mensagem\n      bubble_id,\n    },\n  };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1216,
+        2160
+      ],
+      "id": "f17d0b3f-b04c-4bb6-82ee-b1ed37bbbdb1",
+      "name": "extract infos"
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "key": "cohort:default:admin"
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        -128,
+        2160
+      ],
+      "id": "93bcb1d0-a892-412c-8e17-d0e08aff9198",
+      "name": "Redis3",
+      "credentials": {
+        "redis": {
+          "id": "C9grVaTz9dMMkwZs",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// quantos itens entraram no loop (ou use 'extract infos')\nconst expected = ($items('Loop Over Items1') ?? []).length;\n\n// último retorno de cada nó (apenas para checar sucesso)\nconst supaLast = ($items('POST + merge Supabase') ?? [])[0]?.json ?? {};\nconst bubbleLast = ($items('Bubble: Update a thing') ?? [])[0]?.json ?? {};\n\n// sucesso?\nconst supaOK =\n  (supaLast.statusCode ?? supaLast.status ?? 200) >= 200 &&\n  (supaLast.statusCode ?? supaLast.status ?? 200) < 300;\n\nconst bubbleOK =\n  bubbleLast?.success === true ||\n  bubbleLast?.updated === true ||\n  !!bubbleLast?.id || !!bubbleLast?._id;\n\n// se OK, todos foram atualizados (porque o loop completou)\nconst supabase_count = supaOK ? expected : 0;\nconst bubble_count   = bubbleOK ? expected : 0;\n\nreturn [{\n  json: {\n    ok: true,\n    message: `Leads atualizados no Supabase: ${supabase_count}. Leads atualizados no Bubble: ${bubble_count}.`,\n    supabase_count,\n    bubble_count,\n    expected // só para conferência\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1664,
+        1968
+      ],
+      "id": "22fd0e2e-e636-4363-aa91-fe753da47cfa",
+      "name": "respond updates"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.SUPABASE_URL}}/rest/v1/lead_v?on_conflict=lead_id",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$env.SUPABASE_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"lead_id\": \"{{ $('Loop Over Items1').item.json.id }}\",\n  \"owner\": \"{{ $('Loop Over Items1').item.json.owner_target }}\"\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1888,
+        2240
+      ],
+      "id": "f2179c30-0e6a-4f72-b507-69eb6b437fae",
+      "name": "POST + merge Supabase"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.SUPABASE_URL}}/rest/v1/rpc/search_lead_by_email",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={\n  \"Authorization\": \"Bearer {{$env.SUPABASE_SERVICE_ROLE}}\",\n  \"apikey\": \"{{$env.SUPABASE_SERVICE_ROLE}}\",\n  \"Content-Type\": \"application/json\",\n  \"Prefer\": \"count=exact\"\n}\n",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  p_email: $json.params?.email ?? $json.payload?.email ?? $json.email\n}) }}\n",
+        "options": {
+          "redirect": {
+            "redirect": {}
+          },
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "306bdc31-5186-4315-81c3-08f165d33328",
+      "name": "Supabase RPC search_lead_by_email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        320,
+        624
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.SUPABASE_URL}}/rest/v1/rpc/rpc_search_leads_by_name",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={\n  \"Authorization\": \"Bearer {{$env.SUPABASE_SERVICE_ROLE}}\",\n  \"apikey\": \"{{$env.SUPABASE_SERVICE_ROLE}}\",\n  \"Content-Type\": \"application/json\",\n  \"Prefer\": \"count=exact\"\n}\n",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"name\": \"{{ $json.params.nome }}\",\n  \"limit_count\": \"{{ $json.params.limit }}\",\n  \"offset_count\": 0\n}\n",
+        "options": {
+          "redirect": {
+            "redirect": {}
+          },
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "0c91e461-32ac-4dff-811c-99378cfdc017",
+      "name": "Supabase RPC search_by_name",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        320,
+        48
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.SUPABASE_URL}}/rest/v1/rpc/contar_por_periodo",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={\n  \"Authorization\": \"Bearer {{$env.SUPABASE_SERVICE_ROLE}}\",\n  \"apikey\": \"{{$env.SUPABASE_SERVICE_ROLE}}\",\n  \"Content-Type\": \"application/json\"\n}\n",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "p_start",
+              "value": "={{ $json.start }}"
+            },
+            {
+              "name": "p_end",
+              "value": "={{ $json.end }}"
+            },
+            {
+              "name": "p_granularity",
+              "value": "={{ ($json.granularity || 'day').toLowerCase() }}"
+            }
+          ]
+        },
+        "options": {
+          "redirect": {
+            "redirect": {}
+          },
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "e51748fd-111f-47cf-ac5e-c8154444e235",
+      "name": "Supabase RPC: contar_por_periodo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        96,
+        816
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Opções padrão: últimos 30 dias por dia\nconst now = new Date();\nconst end = now.toISOString();\nconst start = new Date(now.getTime() - 30*24*60*60*1000).toISOString();\n\nconst input = $json || {};\n\nreturn [{\n  start: $input.first().json.params.data_inicial || start,\n  end:   $input.first().json.params.data_final   || end,\n  granularity: (input.granularity || 'day').toLowerCase(), // 'day' | 'week' | 'month'\n  owner: input.owner || null,\n  source: input.source || null,\n  country_iso2: input.country_iso2 || null,\n  // (Opcional) guardar chave de coorte/consulta\n  cohort_key: input.cohort_key || 'cohort:default:admin'\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -128,
+        816
+      ],
+      "id": "ee8c214f-2add-4a90-8d78-575fd12ed0c5",
+      "name": "Prep Count Params"
+    },
+    {
+      "parameters": {
+        "jsCode": "// pega todos os itens vindos do RPC\nconst rows = $input.all();\n\n// parâmetros de contexto\nconst granularidade = $json.granularity || 'day';\nconst start = $json.start;\nconst end   = $json.end;\n\n// soma total\nconst total = rows.reduce((acc, r) => acc + (r.json.lead_count || 0), 0);\n\n// linhas legíveis\nconst lines = rows.map(r => {\n  const bucket = r.json.bucket || '-';\n  const count  = r.json.lead_count ?? 0;\n  return `${bucket}: ${count}`;\n});\n\n// mensagem final\nreturn [{\n  json: {\n    granularidade,\n    start,\n    end,\n    total,\n    lines,\n    message: [\n      `☑️ *Contagem por período*`,\n      `Granularidade: ${granularidade}`,\n      `Janela: ${start} → ${end}`,\n      `Total no período: ${total}`,\n      ``,\n      ...lines.slice(-20)   // limita a 20 linhas\n    ].join('\\n')\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        816
+      ],
+      "id": "e25774a1-0831-43f2-9edf-df4f3cd72f56",
+      "name": "Respond (count_by_period)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.SUPABASE_URL}}/rest/v1/rpc/count_leads_by_country",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={\n  \"Authorization\": \"Bearer {{$env.SUPABASE_SERVICE_ROLE}}\",\n  \"apikey\": \"{{$env.SUPABASE_SERVICE_ROLE}}\",\n  \"Content-Type\": \"application/json\"\n}\n",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"p_owner\": null,\n  \"p_source\": null,\n  \"p_start\": null,\n  \"p_end\": null\n}",
+        "options": {
+          "redirect": {
+            "redirect": {}
+          },
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "fda8887d-3912-433d-89a0-841817c1a802",
+      "name": "Supabase RPC count_leads_by_country",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        -128,
+        1008
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Lê o RPC `count_leads_by_country` e prepara:\n * - redisKey: chave única (considera filtros, se houver)\n * - payload: string JSON para gravar com Redis \"Set\"\n * - meta (total, top5) para usar na resposta\n */\nconst RPC_NODE = 'Supabase RPC count_leads_by_country';\n\n// 1) Linhas do RPC\nconst rows = $items(RPC_NODE).map(i => i.json);\n\n// 2) Mapa país -> contagem\nconst summary = {};\nfor (const r of rows) {\n  const code = (r.country_iso2 || 'UNK').toUpperCase();\n  summary[code] = Number(r.lead_count || 0);\n}\n\n// 3) Totais e top5\nconst total = Object.values(summary).reduce((a, n) => a + n, 0);\nconst top5 = rows.slice(0, 5).map(r => `${(r.country_iso2 || 'UNK').toUpperCase()}: ${r.lead_count}`);\n\n// 4) Monte o sufixo da KEY com base nos filtros (se seu agente enviar na execução)\nconst ctx = {\n  p_owner: $json.p_owner ?? null,\n  p_source: $json.p_source ?? null,\n  p_start: $json.p_start ?? null,\n  p_end:   $json.p_end   ?? null,\n};\n\n// Helper pra deixar a key legível e estável\nfunction norm(v) {\n  if (!v) return 'any';\n  if (typeof v === 'string' && v.trim() === '') return 'any';\n  return String(v).replace(/\\s+/g, '_').replace(/[:]/g, '-');\n}\n\nconst keySuffix =\n  `owner=${norm(ctx.p_owner)}|source=${norm(ctx.p_source)}|` +\n  `start=${norm(ctx.p_start)}|end=${norm(ctx.p_end)}`;\n\nconst redisKey = `cohort:admin:por_pais:${keySuffix}`;\n\n// 5) Payload único (string JSON) para o Redis SET\nconst payloadObj = {\n  type: 'contar_por_pais',\n  filters: ctx,\n  total,\n  summary,            // ex: { BR: 10, US: 3, UNK: 1 }\n  rows,               // linhas cruas do RPC (opcional p/ debug/frontend)\n  updatedAt: new Date().toISOString()\n};\nconst payload = JSON.stringify(payloadObj);\n\n// 6) Emitir um único item\nreturn [\n  {\n    json: {\n      payload,\n      total,\n      top5\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        96,
+        1008
+      ],
+      "id": "40155593-1096-48aa-94f9-8e96fdd64498",
+      "name": "Prep contar_por_pais"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=Contagem por país (total {{$json.total}}):\n{{$json.top5.join(', ')}}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        320,
+        1008
+      ],
+      "id": "0cf1e08c-11ec-40f6-84b1-da64335103ee",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=Contagem por origem (total {{$json.total}}):\n{{$json.top5.join(', ')}}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        320,
+        1776
+      ],
+      "id": "a720b354-873d-434e-b260-b7b0c96a5610",
+      "name": "Respond to Webhook1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.SUPABASE_URL}}/rest/v1/rpc/count_leads_by_source",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={\n  \"Authorization\": \"Bearer {{$env.SUPABASE_SERVICE_ROLE}}\",\n  \"apikey\": \"{{$env.SUPABASE_SERVICE_ROLE}}\",\n  \"Content-Type\": \"application/json\"\n}\n",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"p_owner\": null,\n  \"p_country_iso2\": null,\n  \"p_start\": null,\n  \"p_end\": null\n}\n",
+        "options": {
+          "redirect": {
+            "redirect": {}
+          },
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "f1a68b9e-9a3b-4b3a-9179-4ca7c369eb6d",
+      "name": "Supabase RPC count_leads_by_source",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        -128,
+        1776
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "/**\n * Prepara saída para Redis Set (JSON único) e mensagem.\n */\nconst RPC_NODE = 'Supabase RPC count_leads_by_source';\n\n// 1) Linhas do RPC\nconst rows = $items(RPC_NODE).map(i => i.json);\n\n// 2) Mapa origem -> contagem\nconst summary = {};\nfor (const r of rows) {\n  const src = (r.source || 'UNK').toUpperCase();\n  summary[src] = Number(r.lead_count || 0);\n}\n\n// 3) Totais e top5 p/ exibição\nconst total = Object.values(summary).reduce((a, n) => a + n, 0);\nconst top5 = rows.slice(0, 5).map(r => `${(r.source || 'UNK').toUpperCase()}: ${r.lead_count}`);\n\n// 4) Filtros vindos do agente/entrada (se usar)\nconst ctx = {\n  p_owner:        $json.p_owner ?? null,\n  p_country_iso2: $json.p_country_iso2 ?? null,\n  p_start:        $json.p_start ?? null,\n  p_end:          $json.p_end   ?? null,\n};\n\nfunction norm(v) {\n  if (!v) return 'any';\n  if (typeof v === 'string' && v.trim() === '') return 'any';\n  return String(v).replace(/\\s+/g, '_').replace(/[:]/g, '-');\n}\n\nconst keySuffix =\n  `owner=${norm(ctx.p_owner)}|country=${norm(ctx.p_country_iso2)}|` +\n  `start=${norm(ctx.p_start)}|end=${norm(ctx.p_end)}`;\n\nconst redisKey = `cohort:admin:por_origem:${keySuffix}`;\n\n// 5) Payload único (string JSON) para Redis SET\nconst payloadObj = {\n  type: 'contar_por_origem',\n  filters: ctx,\n  total,\n  summary,     // ex: { ADS: 12, SITE: 7, UNK: 1 }\n  rows,        // opcional para debug/front\n  updatedAt: new Date().toISOString()\n};\nconst payload = JSON.stringify(payloadObj);\n\n// 6) Emitir único item\nreturn [{ json: { payload, total, top5 } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        96,
+        1776
+      ],
+      "id": "fe09d09e-9771-4b5e-8c34-0298c51c9b8e",
+      "name": "Prep contar_por_origem"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prep consulta_semantica_notas\n\nconst payload = $json || {};\nconst params  = payload.params || {};   // <- onde está vindo do seu Switch\nconst args    = payload.args || {};     // fallback se algum agente usar \"args\"\n\n// tenta vários campos comuns\nfunction pickQuery() {\n  return (\n    params.termo ??\n    params.query ??\n    args.query ??\n    args.termo ??\n    payload.query ??\n    payload.text ??\n    payload.search ??\n    payload.term ??\n    \"\"\n  );\n}\n\nconst query = String(pickQuery()).trim();\n\n// debug opcional: comente depois\n// return [{ json: {debug: {params, args, query}} }];\n\nif (!query) {\n  return [{\n    json: {\n      ok: false,\n      error: \"QUERY_VAZIA\",\n      hint: \"Envie um termo/tema para buscar nas notas (ex.: 'atendimento por WhatsApp').\"\n    }\n  }];\n}\n\nconst k = Number((params.k ?? args.k) ?? 10);\nconst minSim = Number((params.min_similarity ?? args.min_similarity) ?? 0.70);\n\nreturn [{\n  json: { ok: true, query, k, minSim }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -128,
+        1200
+      ],
+      "id": "e1becbd6-ce4b-4bc1-a7e9-836f095e2674",
+      "name": "Prep consulta_semantica_notas"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.SUPABASE_URL}}/rest/v1/rpc/search_notes_semantic_voy",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$env.SUPABASE_SERVICE_ROLE}}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.SUPABASE_SERVICE_ROLE}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "query_embedding",
+              "value": "={{$json.query_embedding}}"
+            },
+            {
+              "name": "match_count",
+              "value": "={{$json.match_count}}"
+            }
+          ]
+        },
+        "options": {
+          "redirect": {
+            "redirect": {}
+          },
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "7a61dd74-c5b1-469a-b27b-138849107659",
+      "name": "Supabase RPC search_notes_semantic",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        544,
+        1200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.voyageai.com/v1/embeddings",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.VOYAGE_API_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"voyage-2\",\n  \"input\": [\"={{$json.query}}\"],\n  \"input_type\": \"query\"\n}\n",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        96,
+        1200
+      ],
+      "id": "fa152c29-9a52-4930-9cd9-a8b286f971f1",
+      "name": "Voyage Embedding",
+      "retryOnFail": true,
+      "maxTries": 5
+    },
+    {
+      "parameters": {
+        "jsCode": "const prep = ($items('Prep consulta_semantica_notas')[0]?.json) || {};\nconst k = Number(prep.k ?? 10);\nconst emb = $json.data?.[0]?.embedding || [];\n\nreturn [{\n  json: {\n    query_embedding: emb,   // array de floats\n    match_count: k          // número, não string\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        1200
+      ],
+      "id": "6b07d57a-3d92-4cdc-8bc3-5387465e14a0",
+      "name": "Build RPC Body"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "lead_v",
+        "filterType": "string",
+        "filterString": "notes is not null AND embedding_voy is null"
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -1152,
+        2864
+      ],
+      "id": "afc10e7e-9d7a-4ffc-9d67-ff1f86ebbae3",
+      "name": "Get many rows",
+      "credentials": {
+        "supabaseApi": {
+          "id": "54wAP3gBzBOV0juN",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.voyageai.com/v1/embeddings",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$env.VOYAGE_API_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"voyage-2\",\n  \"input\": \"={{$json.notes}}\",\n  \"input_type\": \"document\"\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -928,
+        2864
+      ],
+      "id": "52cc6b94-0b4f-44cc-9103-c164873769cc",
+      "name": "Voyage Embedding1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Junta, por índice, os itens do Get many rows (originais)\n// com as respostas do Voyage (embedding).\n\nconst orig = $items('Get many rows');   // itens com id, notes, etc.\nconst resp = $items();                  // itens do nó anterior (Voyage)\n\nconst out = resp.map((it, idx) => {\n  const id = orig[idx]?.json?.id;  // pega o id correspondente\n  const emb = it.json?.data?.[0]?.embedding || [];\n  return { json: { id, embedding_voy: emb } };\n});\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -704,
+        2864
+      ],
+      "id": "129307ca-6901-483a-b541-f865e98d74ed",
+      "name": "Preparar Update"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "lead_v",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ Number($json.id) }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "embedding_voy",
+              "fieldValue": "={{ $json.embedding_voy }}"
+            },
+            {
+              "fieldId": "updated_at",
+              "fieldValue": "={{ new Date().toISOString() }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        -480,
+        2864
+      ],
+      "id": "749aa534-64c7-4231-8ae4-8d6a8ffd1d4a",
+      "name": "Update a row",
+      "executeOnce": false,
+      "credentials": {
+        "supabaseApi": {
+          "id": "54wAP3gBzBOV0juN",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1376,
+        2864
+      ],
+      "id": "b2cf02fa-5f5b-45a6-b6de-a53675b0ba75",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ==== Parâmetros ajustáveis ====\nconst MIN_SIMILARITY = 0.55;    // limiar para filtrar resultados fracos\nconst TOP_K          = 5;       // quantos itens no máximo retornar\nconst SNIPPET_LEN    = 160;     // tamanho do trecho exibido da nota\n// ===============================\n\n// 1) Coleta resultados do nó RPC (ajuste o NOME exato do nó)\nconst NODE = 'Supabase RPC search_notes_semantic';\n\n// $items(NODE) pode vir em dois formatos:\n//  - Split OFF: [ { json: [ {...}, {...} ] } ]\n//  - Split ON : [ { json: {...} }, { json: {...} }, ... ]\nlet rows = [];\nconst fromNode = $items(NODE);\n\nif (fromNode.length === 1 && Array.isArray(fromNode[0].json)) {\n  rows = fromNode[0].json;\n} else {\n  rows = fromNode.map(it => it.json);\n}\n\n// Segurança: remove nulos/indefinidos\nrows = rows.filter(r => r && typeof r === 'object');\n\n// 2) Normaliza campos esperados\nrows = rows.map(r => ({\n  id: r.id ?? null,\n  lead_id: r.lead_id ?? null,\n  full_name: r.full_name ?? null,\n  email: r.email ?? null,\n  country_iso2: r.country_iso2 ?? r.country_iso2 ?? null,\n  source: r.source ?? null,\n  notes: r.notes ?? '',\n  owner: r.owner ?? null,\n  similarity: typeof r.similarity === 'number' ? r.similarity : Number(r.similarity ?? 0),\n}));\n\n// 3) Filtra pelo threshold\nrows = rows.filter(r => r.similarity >= MIN_SIMILARITY);\n\n// 4) Dedupe opcional por lead_id (mantém o de maior similaridade)\nconst bestByLead = new Map();\nfor (const r of rows) {\n  const key = r.lead_id ?? `row_${r.id}`;\n  const prev = bestByLead.get(key);\n  if (!prev || r.similarity > prev.similarity) bestByLead.set(key, r);\n}\nrows = Array.from(bestByLead.values());\n\n// 5) Ordena por similaridade decrescente e aplica TOP_K\nrows.sort((a, b) => b.similarity - a.similarity);\nrows = rows.slice(0, TOP_K);\n\n// 6) Gera snippet legível da nota\nfunction mkSnippet(text, maxLen) {\n  if (!text) return '';\n  const clean = String(text).replace(/\\s+/g, ' ').trim();\n  if (clean.length <= maxLen) return clean;\n  return clean.slice(0, maxLen - 1) + '…';\n}\n\nrows = rows.map(r => ({\n  ...r,\n  snippet: mkSnippet(r.notes, SNIPPET_LEN),\n  similarity_pct: Math.round(r.similarity * 10000) / 100, // ex.: 74.98%\n}));\n\n// 7) Saída única para próximos nós\nreturn [{ json: { total: rows.length, results: rows } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        768,
+        1200
+      ],
+      "id": "d10ef762-70cf-46e1-8e21-d216252d0b23",
+      "name": "Process semantic results"
+    },
+    {
+      "parameters": {
+        "jsCode": "const { results = [], total = 0 } = $json;\n\nif (total === 0) {\n  return [{\n    json: {\n      text: \"🔎 *Consulta semântica:* nenhum resultado relevante encontrado (abaixo do threshold).\",\n      blocks: [\n        { type: \"section\", text: { type: \"mrkdwn\", text: \"🔎 *Consulta semântica*\\nNenhum resultado acima do threshold de similaridade.\" } }\n      ]\n    }\n  }];\n}\n\nconst lines = [];\nlines.push(`🔎 *Consulta semântica em notas* — *${total}* resultado(s)`);\nlines.push('');\n\nresults.forEach((r, i) => {\n  const sim = r.similarity_pct !== undefined ? `${r.similarity_pct}%` : (Math.round(r.similarity*10000)/100 + '%');\n  lines.push(`*${i+1}.* *${r.full_name || r.lead_id || '(sem nome)'}* — ${sim}`);\n  if (r.email) lines.push(`• ${r.email}`);\n  if (r.owner) lines.push(`• Owner: ${r.owner}`);\n  if (r.country_iso2) lines.push(`• País: ${r.country_iso2}`);\n  if (r.source) lines.push(`• Origem: ${r.source}`);\n  if (r.snippet) lines.push(`> _${r.snippet}_`);\n  lines.push('');\n});\n\nconst md = lines.join('\\n');\n\nreturn [{\n  json: {\n    text: md,   // para Webhook\n    slack: {    // para Slack\n      blocks: [\n        { type: \"section\", text: { type: \"mrkdwn\", text: md } }\n      ]\n    }\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        992,
+        1200
+      ],
+      "id": "02bb0d1b-35d1-480d-b8cc-5b91823cbc41",
+      "name": "Format semantic reply"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.text }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1216,
+        1296
+      ],
+      "id": "10a7e789-1c2c-4a89-8baa-de30b7b30ef9",
+      "name": "Respond to Webhook2"
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "value": "C09DZBCDGHZ",
+          "mode": "list",
+          "cachedResultName": "novo-canal"
+        },
+        "text": "={{$json.text}}",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        1216,
+        1008
+      ],
+      "id": "77674f20-f43d-4b0b-bd8d-1efa0e120656",
+      "name": "Send a message",
+      "webhookId": "9e3ab227-9851-4b17-99ed-4177740b344d",
+      "credentials": {
+        "slackApi": {
+          "id": "EbaIz2RGsR0KIOwl",
+          "name": "Slack account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "Coorte restaurada!",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        96,
+        2160
+      ],
+      "id": "596f9687-9853-4a79-b1d9-aedcb6f02873",
+      "name": "Respond to Webhook3"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.message }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        544,
+        816
+      ],
+      "id": "ae6b8f0c-c3fa-48b7-a9ed-23f6867bfcdf",
+      "name": "Respond to Webhook4"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{$json.message}}\n{{$json.total > 0\n  ? '\\nLeads:\\n' + $json.preview\n      .map(l => '- ' + (l.full_name || '(sem nome)') + ' (' + (l.email || 'sem email') + ')')\n      .join('\\n')\n  : ''}}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1216,
+        336
+      ],
+      "id": "ffdded11-8a66-46c8-8f6c-7c889f95a3c8",
+      "name": "Respond to Webhook5"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.message }}\nId(s) do(s) Lead(s):\n{{ $json.preview_ids }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        320,
+        432
+      ],
+      "id": "120c4a4d-b7e6-4a43-aca7-141174ff1dff",
+      "name": "Respond to Webhook6"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.message }}\nId(s) dos Lead(s):\n{{ $json.preview_ids }}\n{{ $json.instructions }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1216,
+        1488
+      ],
+      "id": "d026e43e-7206-48ca-9e90-7e2adecd61b7",
+      "name": "Respond to Webhook7"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "A coorte atual não tem itens. Faça uma busca primeiro.",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        992,
+        1968
+      ],
+      "id": "03ae3583-6a5c-4708-82c4-370a9346e7ad",
+      "name": "Respond to Webhook8"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.message }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1888,
+        1968
+      ],
+      "id": "0baa8993-eb11-4046-a443-bf4d6113d073",
+      "name": "Respond to Webhook9"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.message }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        768,
+        2640
+      ],
+      "id": "df0c2802-0fc8-4c91-9ed7-a70be780e3df",
+      "name": "Respond to Webhook10"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "Não há ação pendente para confirmar/cancelar.\nEnvie: preparar atualização_owner <email> | status | cancelar",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        768,
+        2448
+      ],
+      "id": "64037054-2970-4e8e-aec6-173566932432",
+      "name": "Respond to Webhook11"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1bd91ce-9ff4-412f-b0a2-7c4513a7c493",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        96,
+        144
+      ],
+      "id": "e4f031bb-959f-49ca-abb8-c5f43ef9c6a0",
+      "name": "IF: Request OK?"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"ok\": false,\n  \"error\": \"{{$json.error}}\",\n  \"details\": \"{{ $json.details.field }}\"\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        320,
+        240
+      ],
+      "id": "1cb451e5-1f6e-4882-8fd9-e45a7f3d580d",
+      "name": "Respond to Webhook12"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook (Admin In)": {
+      "main": [
+        [
+          {
+            "node": "Prep Context (vars)1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Context (vars)1": {
+      "main": [
+        [
+          {
+            "node": "AI Agent (orquestrador)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "JSON.parse": {
+      "main": [
+        [
+          {
+            "node": "Switch (intent)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Nome": {
+      "main": [
+        [
+          {
+            "node": "IF: Request OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent (orquestrador)",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis": {
+      "main": [
+        [
+          {
+            "node": "Respond (List & Save Cohort)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch (intent)": {
+      "main": [
+        [
+          {
+            "node": "Redis1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Validate Nome",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Supabase RPC search_lead_by_email",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prep Count Params",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Supabase RPC count_leads_by_country",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Supabase RPC count_leads_by_source",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prep consulta_semantica_notas",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Redis3",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Validate Owner",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Redis GET (cohort:default:admin)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Redis GET (pending_action)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Redis GET (pending_action)1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis1": {
+      "main": [
+        [
+          {
+            "node": "Respond (View Cohort)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Cohort": {
+      "main": [
+        [
+          {
+            "node": "Redis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Owner": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Prep Update Summary": {
+      "main": [
+        [
+          {
+            "node": "IF (Has pending?)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis4": {
+      "main": [
+        [
+          {
+            "node": "Respond (Cancelado)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis GET (pending_action)": {
+      "main": [
+        [
+          {
+            "node": "Guard Pending",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis GET (pending_action)1": {
+      "main": [
+        [
+          {
+            "node": "Guard Pending1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guard Pending1": {
+      "main": [
+        [
+          {
+            "node": "Redis4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guard Pending": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis SET (pending_action)": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent (orquestrador)": {
+      "main": [
+        [
+          {
+            "node": "JSON.parse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF (Has pending?)": {
+      "main": [
+        [
+          {
+            "node": "Redis SET (pending_action)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond (Cancelado)1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis GET (cohort:default:admin)": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Prep Update Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Explode IDs",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reply: no pending",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Explode IDs": {
+      "main": [
+        [
+          {
+            "node": "Bubble: Search by lead_id",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bubble: Search by lead_id": {
+      "main": [
+        [
+          {
+            "node": "Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Found?": {
+      "main": [
+        [
+          {
+            "node": "extract infos",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Bubble not found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bubble: Update a thing": {
+      "main": [
+        [
+          {
+            "node": "POST + merge Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items1": {
+      "main": [
+        [
+          {
+            "node": "respond updates",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Bubble: Update a thing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "extract infos": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "respond updates": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook9",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST + merge Supabase": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase RPC search_lead_by_email": {
+      "main": [
+        [
+          {
+            "node": "Build Cohort",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase RPC search_by_name": {
+      "main": [
+        [
+          {
+            "node": "Build Cohort",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Count Params": {
+      "main": [
+        [
+          {
+            "node": "Supabase RPC: contar_por_periodo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase RPC: contar_por_periodo": {
+      "main": [
+        [
+          {
+            "node": "Respond (count_by_period)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase RPC count_leads_by_country": {
+      "main": [
+        [
+          {
+            "node": "Prep contar_por_pais",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep contar_por_pais": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase RPC count_leads_by_source": {
+      "main": [
+        [
+          {
+            "node": "Prep contar_por_origem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep contar_por_origem": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep consulta_semantica_notas": {
+      "main": [
+        [
+          {
+            "node": "Voyage Embedding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase RPC search_notes_semantic": {
+      "main": [
+        [
+          {
+            "node": "Process semantic results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Voyage Embedding": {
+      "main": [
+        [
+          {
+            "node": "Build RPC Body",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build RPC Body": {
+      "main": [
+        [
+          {
+            "node": "Supabase RPC search_notes_semantic",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many rows": {
+      "main": [
+        [
+          {
+            "node": "Voyage Embedding1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Voyage Embedding1": {
+      "main": [
+        [
+          {
+            "node": "Preparar Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Update": {
+      "main": [
+        [
+          {
+            "node": "Update a row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Get many rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process semantic results": {
+      "main": [
+        [
+          {
+            "node": "Format semantic reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format semantic reply": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook2",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis3": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond (count_by_period)": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond (List & Save Cohort)": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond (View Cohort)": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook6",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook7",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond (Cancelado)1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook8",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond to Webhook9": {
+      "main": [
+        [
+          {
+            "node": "Redis2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond (Cancelado)": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook10",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reply: no pending": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook11",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Request OK?": {
+      "main": [
+        [
+          {
+            "node": "Supabase RPC search_by_name",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond to Webhook12",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "51a1c185-5f1c-4551-902b-156db0bc18d5",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "583f43173e7f41a70d863f6a6217afbeaecea8880ce634e50a45f47a3991aa5c"
+  },
+  "id": "hCBC9qbbdmg3w4YN",
+  "tags": []
+}

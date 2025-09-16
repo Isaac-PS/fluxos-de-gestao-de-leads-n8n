@@ -1,0 +1,1072 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "leads-ingest",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "bd1d3677-1ce2-45a8-a934-3d05bcf7bf52",
+      "name": "Webhook (POST /leads-ingest)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -4160,
+        384
+      ],
+      "webhookId": "63f0d9ab-514a-41a3-aadf-e0dd09079d9b",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "vHud2iDAaaHYVmEa",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "=ownerOverrideKey",
+              "value": "={{$env.OWNER_OVERRIDE_KEY}}"
+            },
+            {
+              "name": "supabaseUrl",
+              "value": "={{$env.SUPABASE_URL}}"
+            },
+            {
+              "name": "supabaseKey",
+              "value": "={{$env.SUPABASE_KEY}}"
+            },
+            {
+              "name": "supabaseTable",
+              "value": "lead_v"
+            },
+            {
+              "name": "bubbleApiBase",
+              "value": "={{$env.BUBBLE_API_URL}}"
+            },
+            {
+              "name": "bubbleToken",
+              "value": "={{$env.BUBBLE_API_TOKEN}}"
+            },
+            {
+              "name": "bubbleThing",
+              "value": "lead_v"
+            },
+            {
+              "name": "slackWebhookUrl",
+              "value": "={{$env.SLACK_WEBHOOK_URL}}"
+            },
+            {
+              "name": "ABSTRACT_API_KEY",
+              "value": "={{$env.ABSTRACT_API_KEY}}"
+            },
+            {
+              "name": "VOYAGE_API_KEY",
+              "value": "={{$env.VOYAGE_API_KEY}}"
+            }
+          ],
+          "boolean": [
+            {
+              "name": "do_enrich"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "816a4056-e635-4793-ba1c-53c7f903e406",
+      "name": "Config (inline)",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        -3936,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "b9815620-d2a8-4526-bca6-44a8c99fc39e",
+              "leftValue": "={{$json[\"_valid\"]}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "ca1aa92d-fd81-4063-86c4-adddde7876ce",
+      "name": "IF: Valid payload?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -3488,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "b55a091e-3719-45fe-b50e-d4099a9c541b",
+      "name": "Respond 400",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        -3264,
+        576
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Config (inline)').item.json.supabaseUrl }}/rest/v1/{{ $('Config (inline)').item.json.supabaseTable }}",
+        "sendQuery": true,
+        "specifyQuery": "json",
+        "jsonQuery": "={\"select\":\"id,lead_id,email\",\"or\":\"(lead_id.eq.{{$json.payload.lead_id}},email.eq.{{$json.payload.email}})\",\"limit\":1}\n",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={\"apikey\":\"{{ $('Config (inline)').item.json.supabaseKey }}\",\"Authorization\":\"Bearer {{ $('Config (inline)').item.json.supabaseKey }}\",\"Accept\":\"application/json\"}\n",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "2411c646-7b7c-4b5b-92e7-2ef83d62764f",
+      "name": "Supabase: Check duplicate",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -3264,
+        192
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Config (inline)').item.json.bubbleApiBase }}/api/1.1/obj/{{ $('Config (inline)').item.json.bubbleThing }}",
+        "sendQuery": true,
+        "specifyQuery": "json",
+        "jsonQuery": "={\n  \"constraints\": \"[{\\\"key\\\":\\\"lead_id\\\",\\\"constraint_type\\\":\\\"equals\\\",\\\"value\\\":\\\"{{$json.payload.lead_id}}\\\"}]\",\n  \"limit\": 1\n}",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={\"Authorization\":\"Bearer {{ $('Config (inline)').item.json.bubbleToken }}\",\"Accept\":\"application/json\"}\n",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "e2b5f99b-3529-4803-a245-478d3243c4f1",
+      "name": "Bubble: Search by lead_id",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -3264,
+        384
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$item(0).$node[\"Config (inline)\"].json.supabaseUrl}}/rest/v1/{{$item(0).$node[\"Config (inline)\"].json.supabaseTable}}?on_conflict=lead_id",
+        "sendQuery": true,
+        "specifyQuery": "json",
+        "jsonQuery": "{\"on_conflict\":\"lead_id\"}",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={\n  \"apikey\": \"{{$item(0).$node['Config (inline)'].json.supabaseKey}}\",\n  \"Authorization\": \"Bearer {{$item(0).$node['Config (inline)'].json.supabaseKey}}\",\n  \"Content-Type\": \"application/json\",\n  \"Prefer\": \"resolution=merge-duplicates,return=representation\"\n}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"lead_id\": \"{{$item(0).$node['IF: Valid payload?'].json.payload.lead_id}}\",\n  \"full_name\": \"{{$item(0).$node['IF: Valid payload?'].json.payload.full_name}}\",\n  \"email\": \"{{$item(0).$node['IF: Valid payload?'].json.payload.email}}\",\n  \"owner\": \"{{$item(0).$node['Apply Owner Override (guard)'].json.payload.owner}}\",\n  \"source\": \"{{$item(0).$node['IF: Valid payload?'].json.payload.source}}\",\n  \"country_iso2\": \"{{$item(0).$node['IF: Valid payload?'].json.payload.country_iso2}}\",\n  \"notes\": \"{{$item(0).$node['IF: Valid payload?'].json.payload.notes}}\",\n  \"email_status\": \"{{$json.email_status}}\",\n  \"company_domain\": \"{{$json.company_domain}}\",\n  \"company_name\": \"{{$json.company_name}}\",\n  \"phone_e164\": \"{{$item(0).$node['Normalize + Validate'].json.payload.phone}}\",\n  \"enriched\": {{$json.enriched}},\n  \"enriched_at\": \"{{$json.enriched_at}}\",\n  \"enrichment\": {{ $json.enrichment ? JSON.stringify($json.enrichment) : \"{}\" }}\n}\n",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "798e3d18-e03f-44c3-8906-0b7765520aa6",
+      "name": "Supabase: Upsert lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -352,
+        128
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "26a1e85b-4ee9-466f-b575-314c355b0318",
+              "leftValue": "={{ !!$('Apply Owner Override (guard)').all()?.[0]?.json?.bubbleFound }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {
+          "looseTypeValidation": true
+        }
+      },
+      "id": "5f9f34ec-2b29-41e8-9b98-d87419c09137",
+      "name": "IF: Bubble record exists?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        544,
+        432
+      ],
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{$item(0).$node[\"Config (inline)\"].json.bubbleApiBase}}/api/1.1/obj/{{$item(0).$node[\"Config (inline)\"].json.bubbleThing}}/{{$item(0).$node['Apply Owner Override (guard)'].json.bubbleFound._id}}",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={\"Authorization\":\"Bearer {{$item(0).$node[\"Config (inline)\"].json.bubbleToken}}\",\"Content-Type\":\"application/json\"}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"lead_id\": \"{{$item(0).$node['IF: Valid payload?'].json.payload.lead_id}}\",\n  \"full_name\": \"{{$item(0).$node['IF: Valid payload?'].json.payload.full_name}}\",\n  \"email\": \"{{$item(0).$node['IF: Valid payload?'].json.payload.email}}\",\n  \"owner\": \"{{$item(0).$node['Apply Owner Override (guard)'].json.payload.owner}}\",\n  \"source\": \"{{$item(0).$node['IF: Valid payload?'].json.payload.source}}\",\n  \"country_iso2\": \"{{$item(0).$node['IF: Valid payload?'].json.payload.country_iso2}}\",\n  \"notes\": \"{{$item(0).$node['IF: Valid payload?'].json.payload.notes}}\",\n  \"email_status\": \"{{$json.email_status}}\",\n  \"company_domain\": \"{{$json.company_domain}}\",\n  \"company_name\": \"{{$json.company_name}}\",\n  \"enriched\": {{$json.enriched}},\n  \"enriched_at\": \"{{$json.enriched_at}}\",\n  \"phone_e164\": \"{{$item(0).$node['Normalize + Validate'].json.payload.phone}}\"\n}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "9608831f-52ac-4120-b641-1fa2c98ee7d0",
+      "name": "Bubble: Update existing",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        768,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$item(0).$node[\"Config (inline)\"].json.bubbleApiBase}}/api/1.1/obj/{{$item(0).$node[\"Config (inline)\"].json.bubbleThing}}",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={\"Authorization\":\"Bearer {{$item(0).$node[\"Config (inline)\"].json.bubbleToken}}\",\"Content-Type\":\"application/json\"}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"lead_id\": \"{{$item(0).$node['IF: Valid payload?'].json.payload.lead_id}}\",\n  \"full_name\": \"{{$item(0).$node['IF: Valid payload?'].json.payload.full_name}}\",\n  \"email\": \"{{$item(0).$node['IF: Valid payload?'].json.payload.email}}\",\n  \"owner\": \"{{$item(0).$node['Apply Owner Override (guard)'].json.payload.owner}}\",\n  \"source\": \"{{$item(0).$node['IF: Valid payload?'].json.payload.source}}\",\n  \"country_iso2\": \"{{$item(0).$node['IF: Valid payload?'].json.payload.country_iso2}}\",\n  \"notes\": \"{{$item(0).$node['IF: Valid payload?'].json.payload.notes}}\",\n  \"email_status\": \"{{$json.email_status}}\",\n  \"company_domain\": \"{{$json.company_domain}}\",\n  \"company_name\": \"{{$json.company_name}}\",\n  \"enriched\": {{$json.enriched}},\n  \"enriched_at\": \"{{$json.enriched_at}}\",\n  \"phone_e164\": \"{{$item(0).$node['Normalize + Validate'].json.payload.phone}}\"\n}\n",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "bdb9e687-e655-4947-87e0-affd13b4240c",
+      "name": "Bubble: Create new",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        768,
+        528
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$item(0).$node[\"Config (inline)\"].json.slackWebhookUrl}}",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "{\"Content-Type\":\"application/json\"}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"text\": \"{{ [\n    '*Lead atualizado*',\n    '• lead_id: ' + ($item(0).$node['IF: Valid payload?'].json.payload.lead_id || '-'),\n    '• email_status: ' + ($item(0).$node['Apply Enrichment Flag'].json.email_status || '-'),\n    '• Empresa: ' + (($item(0).$node['Apply Enrichment Flag'].json.company_domain || '-') + ' (' + ($item(0).$node['Apply Enrichment Flag'].json.company_name || '-') + ')'),\n    '• supabase id: ' + ($item(0).$node['Supabase: Upsert lead'].json.id || '-')\n  ].join('\\\\n') }}\"\n}\n",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "b0c99a30-e9af-4ffc-8e21-9bb32c4649f7",
+      "name": "Notify (Slack)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        992,
+        272
+      ],
+      "executeOnce": true,
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ [\n    '*Lead atualizado*',\n    '• lead_id: ' + ($item(0).$node['IF: Valid payload?'].json.payload.lead_id || '-'),\n    '• email_status: ' + ($item(0).$node['Apply Enrichment Flag'].json.email_status || '-'),\n    '• Empresa: ' + (($item(0).$node['Apply Enrichment Flag'].json.company_domain || '-') + ' (' + ($item(0).$node['Apply Enrichment Flag'].json.company_name || '-') + ')'),\n    '• supabase id: ' + ($item(0).$node['Supabase: Upsert lead'].json.id || '-')\n  ].join('\\\\n') }}",
+        "options": {}
+      },
+      "id": "2451153b-3c9b-42b2-81d0-69e1333addc9",
+      "name": "Respond 200",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1216,
+        272
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Dedup Aggregate – seguro mesmo se algum nó ainda não tiver executado\n\n// 1) payload vem do Normalize + Validate (fonte estável)\nlet payload = {};\ntry {\n  payload = $items('Normalize + Validate')[0]?.json?.payload || {};\n} catch (_) { payload = {}; }\n\n// helper: tenta obter itens de um nó; se não executou, devolve []\nfunction safeItems(nodeName) {\n  try {\n    const arr = $items(nodeName);\n    return Array.isArray(arr) ? arr : [];\n  } catch (_) {\n    return [];\n  }\n}\n\n// 2) SUPABASE\nlet supa = [];\nconst sItems = safeItems('Supabase: Check duplicate');\nif (sItems[0]?.json?.body !== undefined) {\n  supa = sItems[0].json.body;           // Full Response = ON\n} else if (Array.isArray(sItems[0]?.json)) {\n  supa = sItems[0].json;                 // array direto\n} else {\n  supa = [];\n}\n\n// 3) BUBBLE\nlet bubbleFound = null;\nconst bItems = safeItems('Bubble: Search by lead_id');\n\nif (bItems[0]?.json?.response?.results) {\n  const results = bItems[0].json.response.results;\n  if (Array.isArray(results) && results.length > 0) bubbleFound = results[0];\n} else if (Array.isArray(bItems[0]?.json) && bItems[0].json.length > 0) {\n  bubbleFound = bItems[0].json[0];\n} else if (Array.isArray(bItems[0]?.json?.body?.response?.results)) {\n  const results = bItems[0].json.body.response.results;\n  if (results.length > 0) bubbleFound = results[0];\n}\n\n// 4) Flag de duplicidade\nconst existsSupabase = Array.isArray(supa) && supa.length > 0;\nconst duplicate_detected = !!(existsSupabase || bubbleFound);\n\n// 5) retorno\nreturn [{\n  json: {\n    duplicate_detected,\n    bubbleFound: bubbleFound || null,\n    payload\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2816,
+        288
+      ],
+      "id": "240c4907-c5b2-4a05-85e3-40defea35960",
+      "name": "Dedup Aggregate"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Routing (+override)  (Run Once for All Items)\n\nconst p = $json.payload || {};\nconst country = p.country_iso2 || '';\nconst source  = p.source || '';\n\nlet ownerRouted = 'owner_default@company.com';\n// suas regras:\nif (country === 'US') ownerRouted = 'owner_us@company.com';\nelse if (country === 'BR') ownerRouted = 'owner_br@company.com';\n// ...demais regras\n\n// Preserva os metadados vindos do Normalize\nconst desiredOwner = $json.desiredOwner ?? null;\nconst providedOverrideKey = $json.providedOverrideKey ?? null;\n\nreturn [{\n  json: {\n    ...$json,               // <-- NÃO PERDE NADA DO ITEM ANTERIOR\n    ownerRouted,\n    desiredOwner,\n    providedOverrideKey,\n    payload: {\n      ...p,\n      owner: ownerRouted    // base para os próximos nós\n    }\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2592,
+        288
+      ],
+      "id": "39832e3a-7532-4c2d-928e-52563e6c51b8",
+      "name": "Routing (+override)",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize + Validate  (Run Once for All Items)\n\n// 0) Fonte do payload (suporta body direto ou $json.body)\nconst raw  = ($json && typeof $json === 'object') ? $json : {};\nconst body = (raw.body && typeof raw.body === 'object') ? raw.body : raw;\n\n// Helpers\nconst get   = (k, d = '') => (body[k] ?? d);\nconst trim  = v => (typeof v === 'string' ? v.trim() : v);\nconst lower = v => (typeof v === 'string' ? v.toLowerCase() : v);\nconst upper = v => (typeof v === 'string' ? v.toUpperCase() : v);\n\n// 1) Campos básicos\nconst lead_id      = trim(get('lead_id', get('id', '')));\nconst email        = lower(trim(get('email', '')));\nconst full_name    = trim(get('full_name', get('name', '')));\nconst countryRaw   = trim(get('country', get('country_iso2', '')));\nconst source       = trim(get('source', 'unknown'));\nconst utm_campaign = trim(get('utm_campaign', ''));\nconst notes        = trim(get('notes', get('note', '')));\nconst rawPhone     = trim(get('phone', get('whatsapp', '')));  // pega phone ou whatsapp\n\n// 2) Override (owner e chave)\nconst desiredOwner = trim(get('owner', get('desired_owner', '')));\nconst providedOverrideKeyBody = trim(get('ownerOverrideKey', get('owner_override_key', '')));\n\n// header x-owner-override-key\nlet providedOverrideKeyHeader = '';\ntry {\n  const headers = raw.headers || {};\n  providedOverrideKeyHeader = trim(\n    String(headers['x-owner-override-key'] ?? headers['X-Owner-Override-Key'] ?? '')\n  );\n} catch (_) {}\n\nconst providedOverrideKey = providedOverrideKeyBody || providedOverrideKeyHeader || '';\n\n// 3) Normaliza país → ISO2\nconst mapCountry = (c) => {\n  if (!c) return '';\n  const x = c.toString().trim();\n  const dict = {\n    'brazil': 'BR', 'brasil': 'BR', 'br': 'BR',\n    'united states': 'US', 'usa': 'US', 'us': 'US',\n    'argentina': 'AR', 'ar': 'AR',\n    'mexico': 'MX', 'mx': 'MX'\n  };\n  const norm = lower(x);\n  if (dict[norm]) return dict[norm];\n  if (x.length === 2) return upper(x);\n  return '';\n};\nconst country_iso2 = mapCountry(countryRaw);\n\n// 3.1) Normaliza telefone → E.164\nfunction toE164(raw, country = 'BR') {\n  if (!raw) return null;\n  let d = String(raw).replace(/\\D+/g, '');\n  if (country === 'BR') {\n    if (d.startsWith('0')) d = d.replace(/^0+/, '');\n    if (d.length === 10 || d.length === 11) d = '55' + d;\n  }\n  if (!d.startsWith('+')) d = '+' + d;\n  return d;\n}\nconst phone = toE164(rawPhone, country_iso2 || 'BR');\n\n// 4) Validação mínima\nconst errors = [];\nif (!lead_id)      errors.push('lead_id required');\nif (!email)        errors.push('email required');\nif (!full_name)    errors.push('full_name required');\nif (!country_iso2) errors.push('country_iso2 required or could not normalize');\n\n// 5) Payload padronizado (owner será definido no roteamento/override)\nconst created_at = new Date().toISOString();\nconst payload = {\n  lead_id,\n  email,\n  full_name,\n  country_iso2,\n  source,\n  utm_campaign,\n  phone,   // já normalizado\n  owner: null,\n  created_at,\n  enriched: false,\n  notes\n};\n\n// 6) Retorno\nreturn [{\n  json: {\n    _valid: errors.length === 0,\n    errors,\n    payload,\n    // metadados que os próximos nós usarão\n    desiredOwner,\n    providedOverrideKey\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3712,
+        384
+      ],
+      "id": "0cb4c757-4fe0-4098-bb65-61ba997c052a",
+      "name": "Normalize + Validate"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Garante tipos, timestamp e limpa ruídos soltos\nconst j = { ...$json };\n\n// boolean 100% booleana\nj.enriched = j.enriched === true;\n\n// carimba enriched_at se faltou e já está enriquecido\nif (!j.enriched_at && j.enriched) {\n  j.enriched_at = new Date().toISOString();\n}\n\n// default seguro para status de e-mail\nif (j.email_status == null || String(j.email_status).trim() === '') {\n  j.email_status = 'unknown';\n}\n\n// remove chaves soltas que eventualmente vazaram dos micro-nós\n['provider', 'e164', 'phone_raw'].forEach(k => { if (k in j) delete j[k]; });\n\nreturn [{ json: j }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -576,
+        288
+      ],
+      "id": "db97db8a-4812-43d6-b883-050a970dfa83",
+      "name": "Apply Enrichment Flag"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -3040,
+        288
+      ],
+      "id": "712954c7-9942-43ad-9d96-47de41ef12de",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.voyageai.com/v1/embeddings",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{$item(0).$node[\"Config (inline)\"].json.VOYAGE_API_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"voyage-2\",\n  \"input\": \"={{$json.notes}}\",\n  \"input_type\": \"document\"\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        320,
+        48
+      ],
+      "id": "2061f355-330e-4dd6-938a-e489a5a6ea4f",
+      "name": "Voyage Embedding1"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "lead_v",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ Number($json.id) }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "embedding_voy",
+              "fieldValue": "={{ $json.embedding_voy }}"
+            },
+            {
+              "fieldId": "notes_hash",
+              "fieldValue": "={{ $json.notes_hash }}"
+            },
+            {
+              "fieldId": "updated_at",
+              "fieldValue": "={{ new Date().toISOString() }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        768,
+        48
+      ],
+      "id": "aa39dc90-6d4b-4056-b63a-31f23662b298",
+      "name": "Update a row",
+      "executeOnce": false,
+      "credentials": {
+        "supabaseApi": {
+          "id": "54wAP3gBzBOV0juN",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Gera hash da nota e deixa tudo pronto para o IF\nfunction sha1(s) {\n  // mini sha1 sem 'require' (suficiente para flag de mudança)\n  // se preferir, pode usar $json.notes diretamente e só checar \"not empty\"\n  const txt = String(s ?? '').trim();\n  // hash simples (não-criptográfico) só pra comparar mudança\n  let h = 0; for (let i=0; i<txt.length; i++) { h = ((h<<5) - h) + txt.charCodeAt(i); h |= 0; }\n  return String(h);\n}\n\nconst notes = String($json.notes ?? '').trim();\n\nreturn [{\n  json: {\n    ...$json,\n    _notes: notes,\n    _notes_hash: sha1(notes)\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -128,
+        128
+      ],
+      "id": "27d8e3f0-5af0-49df-ac47-f5293a53ea4f",
+      "name": "Prep notes hash"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Puxa valores do node \"Prep notes hash\" (que tem id e _notes_hash)\nconst base = $item(0).$node['Prep notes hash']?.json || {};\nconst id = base.id;                     // id da linha\nconst newHash = base._notes_hash;       // hash da nota atual\nconst emb = $json.data?.[0]?.embedding || [];\n\nreturn [{\n  json: {\n    id,\n    embedding_voy: emb,\n    notes_hash: newHash\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        544,
+        48
+      ],
+      "id": "ec8ea6ae-f4c8-428f-8f88-3389310740ac",
+      "name": "Prep update embedding"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "71057801-9af1-479c-b783-c24f94694900",
+              "leftValue": "={{ $json._notes }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "5e51b165-e6b1-48e8-a7a3-63bb9c8fb498",
+              "leftValue": "=={{ $json.notes_hash ?? '' }}",
+              "rightValue": "=={{ $json._notes_hash }}",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        96,
+        128
+      ],
+      "id": "58d795d2-1b0f-4d2d-b799-a83a77b5d700",
+      "name": "IF recalculate the embedding?"
+    },
+    {
+      "parameters": {
+        "jsCode": "// --- 1) Chave mestra do Config (inline) ---\nconst cfg = ($items('Config (inline)')[0] || {}).json || {};\nconst masterKey = cfg.ownerOverrideKey || '';\n\n// --- 2) Pega override direto do Normalize + Validate (não depende do $json atual) ---\nconst norm = ($items('Normalize + Validate')[0] || {}).json || {};\nconst desiredOwnerFromNormalize = norm.desiredOwner || '';\nlet providedKey =\n  norm.providedOverrideKey\n  || (norm.headers ? (norm.headers['x-owner-override-key'] || norm.headers['X-Owner-Override-Key']) : '')\n  || '';\n\n// fallback extra: tenta header do Config (inline) e do item atual\nif (!providedKey) {\n  const hdrCfg = cfg.headers || {};\n  const hdrCur = $json.headers || {};\n  providedKey = hdrCfg['x-owner-override-key'] || hdrCfg['X-Owner-Override-Key']\n             || hdrCur['x-owner-override-key'] || hdrCur['X-Owner-Override-Key'] || '';\n}\n\nconst desiredOwner = desiredOwnerFromNormalize;\n\n// --- 3) Owner roteado (país/origem) ---\nconst ownerRouted = $json.ownerRouted || $json.payload?.owner || null;\n\n// --- 4) Aplica override ---\nlet ownerFinal = ownerRouted;  // sempre inicializa\nlet overrideApplied = false;\nlet overrideReason  = 'NO_OVERRIDE_REQUEST';\n\nif (desiredOwner && providedKey) {\n  if (masterKey && providedKey === masterKey) {\n    ownerFinal = desiredOwner;\n    overrideApplied = true;\n    overrideReason  = 'VALID_KEY';\n  } else {\n    overrideReason  = 'INVALID_KEY';\n  }\n}\n\n// --- 5) Atualiza payload e retorna no nível raiz ---\nconst payload = { ...( $json.payload || {} ), owner: ownerFinal };\n\nreturn [{\n  json: {\n    ...$json,\n    payload,\n    ownerRouted,\n    ownerFinal,\n    overrideApplied,\n    overrideReason,\n    desiredOwner,\n    providedOverrideKey: providedKey\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2368,
+        288
+      ],
+      "id": "d942f2d1-7abd-4a87-9770-f5d606749956",
+      "name": "Apply Owner Override (guard)"
+    },
+    {
+      "parameters": {
+        "url": "=https://emailreputation.abstractapi.com/v1/?api_key={{ $node[\"Config (inline)\"].json.ABSTRACT_API_KEY }}\n&email={{ $json.payload.email }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1920,
+        368
+      ],
+      "id": "81269a97-da25-4598-b301-dbf8a790af53",
+      "name": "Email Verify",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Tente pegar o email do item atual OU de nós anteriores\nconst email =\n  $json.email ||\n  $json.payload?.email ||\n  $items(\"Apply Owner Override (guard)\", 0)[0]?.json?.payload?.email ||\n  $items(\"Merge\", 0)[0]?.json?.payload?.email ||\n  \"\";\n\n// 1) domínio preferencial: o que veio do Company Lookup (Normalize lookup)\n// 2) fallback: domínio do email\nconst domainFromLookup = $json.domain || null;\nconst domainFromEmail  = (email.split('@')[1] || '').trim() || null;\nconst domain = domainFromLookup || domainFromEmail || \"\";\n\n// extrai o TLD (pega a última parte: .com.br → \"br\")\nconst parts = domain.split('.').filter(Boolean);\nconst tld = parts.length ? parts[parts.length - 1].toUpperCase() : null;\n\n// mapa básico TLD→ISO2 (complete se quiser)\nconst tldToISO = {\n  BR: 'BR', US: 'US', PT: 'PT', ES: 'ES', FR: 'FR', DE: 'DE', IT: 'IT',\n  NL: 'NL', BE: 'BE', AR: 'AR', MX: 'MX', CL: 'CL', CO: 'CO', PE: 'PE',\n  UK: 'GB', // .uk → GB\n  AU: 'AU', CA: 'CA', JP: 'JP', KR: 'KR', IN: 'IN'\n};\n\n// priorize country do payload; senão, TLD; senão, null\nconst payloadISO =\n  $json.country_iso2 ||\n  $items(\"Apply Owner Override (guard)\", 0)[0]?.json?.payload?.country_iso2 ||\n  $items(\"Merge\", 0)[0]?.json?.payload?.country_iso2 ||\n  null;\n\nconst iso = payloadISO || (tld ? tldToISO[tld] : null) || null;\n\nreturn [{\n  json: {\n    provider: 'tld_geo',\n    country_iso2: iso,\n    city: $json.city || null,             // mantém se já tiver city em algum ponto\n    method: payloadISO ? 'payload' : (iso ? 'tld_or_payload' : 'payload')\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1024,
+        368
+      ],
+      "id": "732b1176-1b9b-4c08-a39c-430c411c9ad2",
+      "name": "Geo Infer",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const r = $json;\nreturn [{\n  json: {\n    provider: 'email_verify',\n    status: (r.deliverability || 'unknown').toLowerCase(), // deliverable/undeliverable/risky/unknown\n    confidence: parseFloat(r.quality_score || '0'),\n    email: r.email\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1696,
+        368
+      ],
+      "id": "4c281856-9b54-4223-8526-03edc5abfc81",
+      "name": "Normalize Email Verify",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "https://autocomplete.clearbit.com/v1/companies/suggest",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "={{ \n  (\n    $items(\"Apply Owner Override (guard)\", 0)[0].json.payload.email || \"\"\n  ).split(\"@\")[1] || \"\" \n}}\n"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1472,
+        368
+      ],
+      "id": "2d8cc4b7-6b41-418a-bb46-93c235ac0c55",
+      "name": "Company Lookup",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Itens que chegaram do Company Lookup\nconst items = $input.all();\nconst first = items[0]?.json;\n\n// E-mail vindo de nós anteriores (buscar em vários lugares):\nconst email =\n  first?.payload?.email ||\n  $items(\"Apply Owner Override (guard)\", 0)[0]?.json?.payload?.email ||\n  $items(\"Merge\", 0)[0]?.json?.payload?.email ||\n  $items(\"Normalize + Validate\", 0)[0]?.json?.email ||\n  \"\";\n\nconst domainFromEmail = (email.split(\"@\")[1] || \"\").trim() || null;\n\n// Se o HTTP veio com Split Into Items = OFF, first pode ser um ARRAY:\nlet best = {};\nif (Array.isArray(first)) {\n  best = first[0] || {};\n} else {\n  best = first || {};\n}\n\nconst out = {\n  provider: \"company_lookup\",\n  domain: best.domain || domainFromEmail || null,\n  name: best.name || null,\n  confidence: best.domain ? 0.75 : (domainFromEmail ? 0.3 : 0),\n};\n\nreturn [{ json: out }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1248,
+        368
+      ],
+      "id": "6eded66b-263c-4e27-bcf6-f1a1bfbd3e10",
+      "name": "Normalize lookup",
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ---------- helpers seguros ----------\nfunction fromNodeSafe(nodeName) {\n  try {\n    const arr = $items(nodeName, 0);            // pode lançar erro se o nome não existir\n    if (Array.isArray(arr) && arr.length) {\n      return arr[0]?.json ?? {};\n    }\n  } catch (e) {}\n  return {};\n}\n\nconst pick = (oldVal, newVal) =>\n  (oldVal !== undefined && oldVal !== null && String(oldVal).trim() !== '')\n    ? oldVal\n    : newVal;\n\nconst toLower = v => (typeof v === 'string' ? v.toLowerCase() : v);\n\n// ---------- 1) base do lead (ACHATAR payload) ----------\n// Se o item veio como { payload: {...campos...}, ... }, trazemos o payload para o topo.\n// O topo (resultado de nós anteriores) continua podendo sobrescrever o payload.\nconst payloadBase = (typeof $json.payload === 'object' && $json.payload) ? $json.payload : {};\nconst lead = { ...payloadBase, ...$json };   // agora lead_id, email, owner etc ficam acessíveis no topo\n\n// ---------- 2) coletar saídas normalizadas dos micro-nós ----------\nconst emailVerify =\n  fromNodeSafe('Normalize Email Verify') ||  // preferencial\n  fromNodeSafe('Email Verify');              // fallback\n\nconst companyNorm =\n  fromNodeSafe('Normalize lookup') ||        // preferencial\n  fromNodeSafe('Company Lookup');            // fallback (se existir)\n\nconst geo = fromNodeSafe('Geo Infer');\nconst phone = fromNodeSafe('Phone Normalize');\nconst profiles = fromNodeSafe('Profiles Lookup'); // opcional (se não existir, ignora)\n\n// ---------- 3) montar pacote enrichment ----------\nconst domainFromEmail = lead.email ? String(lead.email).split('@')[1] : null;\n\nconst enrichment = {\n  email: { status: (emailVerify.status || 'unknown') },\n  company: {\n    domain: toLower(companyNorm.domain || domainFromEmail || null),\n    name: companyNorm.name || null\n  },\n  geo: {\n    country_iso2: geo.country_iso2 || lead.country_iso2 || null,\n    city: geo.city || null,\n    method: geo.method || null\n  },\n  phone: {\n    raw: phone.phone_raw || lead.phone || null,\n    e164: phone.e164 || lead.phone_e164 || null\n  },\n  profiles: { linkedin: profiles.linkedin || null },\n  confidence: Math.max(\n    Number(emailVerify.confidence || 0),\n    Number(companyNorm.confidence || 0),\n    Number(geo.confidence || 0)\n  ) || 0,\n  providers: [\n    emailVerify.provider,\n    companyNorm.provider,\n    geo.provider,\n    phone.provider,\n    profiles.provider\n  ].filter(Boolean),\n  ts: new Date().toISOString()\n};\n\n// ---------- 4) merge final (não sobrescreve campos já preenchidos) ----------\nconst next = {\n  // mantém todos os campos já existentes (lead inclui payload achatado)\n  ...lead,\n\n  // carrega o payload bruto para frente (útil para nós que ainda dependem dele)\n  payload: payloadBase,\n\n  // campos \"flattened\" que podem ter vindo do enrichment\n  email_status:  pick(lead.email_status,  enrichment.email.status),\n  company_domain: pick(lead.company_domain, enrichment.company.domain),\n  company_name:   pick(lead.company_name,  enrichment.company.name),\n  country_iso2:   pick(lead.country_iso2,  enrichment.geo.country_iso2),\n  city:           pick(lead.city,          enrichment.geo.city),\n  phone_e164:     pick(lead.phone_e164,    enrichment.phone.e164),\n\n  // objeto enrichment acumulado\n  enrichment: { ...(lead.enrichment || {}), ...enrichment },\n\n  // flag e timestamp\n  enriched: Boolean(\n    enrichment.email.status !== 'unknown' ||\n    enrichment.company.domain ||\n    enrichment.phone.e164 ||\n    enrichment.profiles.linkedin\n  ),\n  enriched_at: lead.enriched_at || new Date().toISOString()\n};\n\n// ---------- 5) higiene: remover chaves soltas que podem vazar de nós micro ----------\n['provider', 'e164', 'phone_raw'].forEach(k => { if (k in next) delete next[k]; });\n\nreturn [{ json: next }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -800,
+        288
+      ],
+      "id": "7ae0fd86-800e-464d-b1d1-b8b03401d6f0",
+      "name": "Enrichment (best-effort)"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "54583b09-96bb-45cf-9985-42e89c02b3c2",
+              "leftValue": "={{ ($item(0).$node[\"Config (inline)\"].json.do_enrich ?? false) === true }}\n",
+              "rightValue": "true",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -2144,
+        288
+      ],
+      "id": "f5e96343-64b4-476b-80a5-97c23117514d",
+      "name": "Should Enrich?"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook (POST /leads-ingest)": {
+      "main": [
+        [
+          {
+            "node": "Config (inline)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Valid payload?": {
+      "main": [
+        [
+          {
+            "node": "Supabase: Check duplicate",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Bubble: Search by lead_id",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 400",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Bubble record exists?": {
+      "main": [
+        [
+          {
+            "node": "Bubble: Update existing",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Bubble: Create new",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: Upsert lead": {
+      "main": [
+        [
+          {
+            "node": "Prep notes hash",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bubble: Update existing": {
+      "main": [
+        [
+          {
+            "node": "Notify (Slack)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bubble: Create new": {
+      "main": [
+        [
+          {
+            "node": "Notify (Slack)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify (Slack)": {
+      "main": [
+        [
+          {
+            "node": "Respond 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config (inline)": {
+      "main": [
+        [
+          {
+            "node": "Normalize + Validate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize + Validate": {
+      "main": [
+        [
+          {
+            "node": "IF: Valid payload?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase: Check duplicate": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bubble: Search by lead_id": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Dedup Aggregate": {
+      "main": [
+        [
+          {
+            "node": "Routing (+override)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Routing (+override)": {
+      "main": [
+        [
+          {
+            "node": "Apply Owner Override (guard)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apply Enrichment Flag": {
+      "main": [
+        [
+          {
+            "node": "Supabase: Upsert lead",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "IF: Bubble record exists?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Dedup Aggregate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Voyage Embedding1": {
+      "main": [
+        [
+          {
+            "node": "Prep update embedding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update a row": {
+      "main": [
+        [
+          {
+            "node": "Notify (Slack)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep notes hash": {
+      "main": [
+        [
+          {
+            "node": "IF recalculate the embedding?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep update embedding": {
+      "main": [
+        [
+          {
+            "node": "Update a row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF recalculate the embedding?": {
+      "main": [
+        [
+          {
+            "node": "Voyage Embedding1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notify (Slack)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apply Owner Override (guard)": {
+      "main": [
+        [
+          {
+            "node": "Should Enrich?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Verify": {
+      "main": [
+        [
+          {
+            "node": "Normalize Email Verify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Geo Infer": {
+      "main": [
+        [
+          {
+            "node": "Enrichment (best-effort)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Email Verify": {
+      "main": [
+        [
+          {
+            "node": "Company Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Company Lookup": {
+      "main": [
+        [
+          {
+            "node": "Normalize lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize lookup": {
+      "main": [
+        [
+          {
+            "node": "Geo Infer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enrichment (best-effort)": {
+      "main": [
+        [
+          {
+            "node": "Apply Enrichment Flag",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Enrich?": {
+      "main": [
+        [
+          {
+            "node": "Email Verify",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Enrichment (best-effort)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "9656e932-6ba9-478b-856a-1ca1cacc47fb",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "583f43173e7f41a70d863f6a6217afbeaecea8880ce634e50a45f47a3991aa5c"
+  },
+  "id": "NaHn82gjbdy6qy8c",
+  "tags": []
+}
