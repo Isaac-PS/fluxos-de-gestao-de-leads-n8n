@@ -103,7 +103,7 @@ Crie no Bubble um **Data Type** `lead_v` com os campos (tipos indicados):
 - `company_domain` (text), `company_name` (text), `email_status` (text);
 - (opcional) `city` (text).
 
-> Diferenças **Supabase × Bubble**: Bubble **não** armazena os campos de IA (`embedding_voy`, `notes_hash`, `enrichment jsonb`, `linkedin_url`). Isso é esperado e está documentado no desafio — a persistência dupla guarda apenas o essencial no Bubble.
+> Diferenças **Supabase × Bubble**: Bubble **não** armazena os campos de IA (`embedding_voy`, `notes_hash`, `enrichment jsonb`, `linkedin_url`). A persistência dupla guarda apenas o essencial no Bubble.
 
 Habilite **Data API** no app, gere um **API Token** e guarde a **base URL** (ex.: `https://<app>.bubbleapps.io/version-test`).
 
@@ -153,7 +153,7 @@ Habilite **Data API** no app, gere um **API Token** e guarde a **base URL** (ex.
 
 > - 5.1 Importar e preparar o ambiente do Postman
 
-> - Importe o arquivo postman_collection.json. no Postman
+> - Importe o arquivo Leads & Admin Agent.postman_collection.json no Postman
 
 > - Em Variables altere:
 
@@ -306,7 +306,7 @@ Erros no Slack de escopo/permissão: confirme se está usando Incoming Webhook (
 
 ---
 
-## 7) Observações de conformidade solicitadas no desafio
+## 7) Observações
 
 - **Coorte com TTL**: `cohort:default:admin` (1800s), `pending:default:admin` (600s).
 - **Busca semântica & difusa**: via `search_notes_semantic_voy` (pgvector) e RPCs fuzzy de nome/e‑mail.
