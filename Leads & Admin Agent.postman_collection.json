@@ -1,0 +1,412 @@
+{
+	"info": {
+		"_postman_id": "44aa61dc-86f1-402d-aa33-6d592c494aea",
+		"name": "Desafio n8n — Leads & Admin Agent",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "40598925"
+	},
+	"item": [
+		{
+			"name": "Leads — Ingest",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "{{N8N_INGEST_HEADER_NAME}}",
+						"value": "{{N8N_INGEST_HEADER_VALUE}}"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "x-owner-override-key",
+						"value": "override-test",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\"lead_id\": \"lead-test-005\", \"full_name\": \"Maria Souza 2\", \"email\": \"maria.souza2@example.com\", \"country_iso2\": \"BR\", \"source\": \"ads\", \"utm_campaign\": \"campanha-jan2\", \"notes\": \"\", \"phone\": \"51 94444-5555\"}"
+				},
+				"url": {
+					"raw": "{{LEADS_WEBHOOK}}",
+					"host": [
+						"{{LEADS_WEBHOOK}}"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Admin — Buscar por nome",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "{{N8N_INGEST_HEADER_NAME}}",
+						"value": "{{N8N_INGEST_HEADER_VALUE}}"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\"mensagem\": \"buscar pessoa maria limit 2\"}"
+				},
+				"url": {
+					"raw": "{{N8N_BASE}}/admin-agent",
+					"host": [
+						"{{N8N_BASE}}"
+					],
+					"path": [
+						"admin-agent"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Admin — Buscar por e-mail",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "{{N8N_INGEST_HEADER_NAME}}",
+						"value": "{{N8N_INGEST_HEADER_VALUE}}"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\"mensagem\": \"buscar por ana.costa@example.com\"}"
+				},
+				"url": {
+					"raw": "{{N8N_BASE}}/admin-agent",
+					"host": [
+						"{{N8N_BASE}}"
+					],
+					"path": [
+						"admin-agent"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Admin — Contar por país",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "{{N8N_INGEST_HEADER_NAME}}",
+						"value": "{{N8N_INGEST_HEADER_VALUE}}"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\"mensagem\": \"contar por país\"}"
+				},
+				"url": {
+					"raw": "{{N8N_BASE}}/admin-agent",
+					"host": [
+						"{{N8N_BASE}}"
+					],
+					"path": [
+						"admin-agent"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Admin — Contar por período",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "{{N8N_INGEST_HEADER_NAME}}",
+						"value": "{{N8N_INGEST_HEADER_VALUE}}"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\"mensagem\": \"contar por período\"}"
+				},
+				"url": {
+					"raw": "{{N8N_BASE}}/admin-agent",
+					"host": [
+						"{{N8N_BASE}}"
+					],
+					"path": [
+						"admin-agent"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Admin — Contar por origem",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "{{N8N_INGEST_HEADER_NAME}}",
+						"value": "{{N8N_INGEST_HEADER_VALUE}}"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\"mensagem\": \"contar por origem\"}"
+				},
+				"url": {
+					"raw": "{{N8N_BASE}}/admin-agent",
+					"host": [
+						"{{N8N_BASE}}"
+					],
+					"path": [
+						"admin-agent"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Admin — Consulta semântica",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "{{N8N_INGEST_HEADER_NAME}}",
+						"value": "{{N8N_INGEST_HEADER_VALUE}}"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\"mensagem\": \"notas sobre interesse\"}"
+				},
+				"url": {
+					"raw": "{{N8N_BASE}}/admin-agent",
+					"host": [
+						"{{N8N_BASE}}"
+					],
+					"path": [
+						"admin-agent"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Admin — Ver coorte",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "{{N8N_INGEST_HEADER_NAME}}",
+						"value": "{{N8N_INGEST_HEADER_VALUE}}"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\"mensagem\": \"Ver coorte\"}"
+				},
+				"url": {
+					"raw": "{{N8N_BASE}}/admin-agent",
+					"host": [
+						"{{N8N_BASE}}"
+					],
+					"path": [
+						"admin-agent"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Admin — Limpar Coorte",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "{{N8N_INGEST_HEADER_NAME}}",
+						"value": "{{N8N_INGEST_HEADER_VALUE}}"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\"mensagem\": \"Limpar coorte\"}"
+				},
+				"url": {
+					"raw": "{{N8N_BASE}}/admin-agent",
+					"host": [
+						"{{N8N_BASE}}"
+					],
+					"path": [
+						"admin-agent"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Admin — Preparar atualização de owner",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "{{N8N_INGEST_HEADER_NAME}}",
+						"value": "{{N8N_INGEST_HEADER_VALUE}}"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\"mensagem\": \"trocar o dono para owner_br@company.com\"}"
+				},
+				"url": {
+					"raw": "{{N8N_BASE}}/admin-agent",
+					"host": [
+						"{{N8N_BASE}}"
+					],
+					"path": [
+						"admin-agent"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Admin — Confirmar",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "{{N8N_INGEST_HEADER_NAME}}",
+						"value": "{{N8N_INGEST_HEADER_VALUE}}"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\"mensagem\": \"confirmar\"}"
+				},
+				"url": {
+					"raw": "{{N8N_BASE}}/admin-agent",
+					"host": [
+						"{{N8N_BASE}}"
+					],
+					"path": [
+						"admin-agent"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Admin — Cancelar",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					},
+					{
+						"key": "{{N8N_INGEST_HEADER_NAME}}",
+						"value": "{{N8N_INGEST_HEADER_VALUE}}"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\"mensagem\": \"Cancelar\"}"
+				},
+				"url": {
+					"raw": "{{N8N_BASE}}/admin-agent",
+					"host": [
+						"{{N8N_BASE}}"
+					],
+					"path": [
+						"admin-agent"
+					]
+				}
+			},
+			"response": []
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "N8N_BASE",
+			"value": "http://localhost:5678"
+		},
+		{
+			"key": "N8N_INGEST_HEADER_NAME",
+			"value": "x-api-key"
+		},
+		{
+			"key": "N8N_INGEST_HEADER_VALUE",
+			"value": "troque-este-token"
+		},
+		{
+			"key": "LEADS_WEBHOOK",
+			"value": "http://localhost:5678/webhook/leads-ingest"
+		}
+	]
+}
