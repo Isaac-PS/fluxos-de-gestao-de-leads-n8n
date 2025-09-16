@@ -182,12 +182,12 @@ Variações:
 
 > - Envie o mesmo lead_id duas vezes para testar dedupe (esperar “duplicado” sem criar novo).
 
-> - Remova um campo essencial (ex.: email) para ver o erro de validação (esperar 4xx).
+> - Remova um campo essencial (ex.: email) para ver o erro de validação (esperar erro).
 
 > - Adicione o header x-owner-override-key: {{OWNER_OVERRIDE_KEY}} (valor real do .env) e um owner no body para testar o override protegido, confira um item com owner no seed.
 
 # Admin — Buscar por nome
-POST {{N8N_BASE}}/webhook/admin-agent com {"mensagem":"buscar pessoa maria limit 5"}.
+POST {{N8N_BASE}}/admin-agent com {"mensagem":"buscar pessoa maria limit 5"}.
 
 Esperado: lista de leads compatível + coorte salva no Redis (TTL 1800s).
 
@@ -204,7 +204,7 @@ Esperado: top-matches por similaridade (não grava coorte).
 # Admin — Preparar atualização de owner
 {"mensagem":"trocar o dono para owner_us@company.com"}.
 
-Esperado: resposta de resumo/pending com quantidade afetada (o conjunto vem da última coorte ativa, criada por Buscar por nome).
+Esperado: resposta de resumo/pending com quantidade afetada (o conjunto vem da última coorte ativa, criada por Buscar por nome/e-mail).
 
 # Admin — Confirmar
 {"mensagem":"confirmar"}.
@@ -221,17 +221,17 @@ A.1 Pipeline (Fluxo A)
 
  Lead válido: enviar um lead novo → 200, persistência dupla (Supabase+Bubble), Slack notificado.
 
- Dedupe: reenviar mesmo lead_id → não cria duplicata; resposta deixa claro que é duplicado (o teu fluxo faz upsert; o avaliador pode verificar que não houve nova linha).
+ Dedupe: reenviar mesmo lead_id → não cria duplicata; resposta deixa claro que é duplicado (o seu fluxo faz upsert).
 
- Validação: enviar sem email ou full_name → 4xx com mensagem clara.
+ Validação: enviar sem email ou full_name → erro com mensagem clara.
 
  Override protegido: com header x-owner-override-key correto + owner no body → owner final deve refletir o override; sem header ou com chave incorreta → prevalece regra por país.
 
- Enrichment leve: enviar lead com email realista → campos como email_status, company_domain/company_name podem preencher; linkedin_url pode ficar nulo (documentado).
+ Enrichment leve(habilite no nó Config (inline) - do_enrich): enviar lead com email realista → campos como email_status, company_domain/company_name podem preencher; linkedin_url pode ficar nulo (documentado).
 
  Embeddings de notas: enviar/atualizar notes → embedding_voy gravado; ao atualizar com notes diferentes → notes_hash muda e recalcula.
 
- Segurança: enviar sem {{N8N_INGEST_HEADER_NAME}} ou com valor errado → 401/403.
+ Segurança: enviar sem {{N8N_INGEST_HEADER_NAME}} ou com valor errado → erro.
 
 A.2 Agente Admin (Fluxo B)
 
@@ -239,7 +239,7 @@ A.2 Agente Admin (Fluxo B)
 
  Busca por e-mail: “buscar e-mail <endereço>” → resultados (fuzzy) + coorte salva.
 
- Contagens: “contar por período 01-01-2024..03-01-2024”, “contar por país”, “contar por origem” → respostas formatadas sem mexer em coorte.
+ Contagens: “contar leads por período 01-01-2024 a 03-01-2024”, “contar por país”, “contar por origem” → respostas formatadas sem mexer em coorte.
 
  RAG em notas: “notas sobre <tema>” → top matches por similaridade.
 
