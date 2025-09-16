@@ -1,7 +1,7 @@
 
 # Desafio n8n — Pipeline de Leads & Agente Admin (Entrega)
 
-Este pacote contém **os exports dos dois fluxos exatamente como você enviou** e um guia para que o avaliador importe e execute sem dor de cabeça. Também inclui o SQL de criação da tabela `lead_v` no Supabase (com índices e RPCs), um `.env.example` e uma coleção Postman.
+Este pacote contém **os exports dos dois fluxos no N8N** e um guia para que outro usuário importe e execute sem dor de cabeça. Também inclui o SQL de criação da tabela `lead_v` no Supabase (com índices e RPCs), um `.env.example` e uma coleção Postman.
 
 > **Fluxos (já no pacote):**
 > - `Fluxo A) Pipeline de Leads.json` — ingestão, normalização/validação, dedupe, roteamento/override de owner, enriquecimento leve, persistência em Supabase e Bubble, notificação e embeddings de notas.
